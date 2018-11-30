@@ -8,6 +8,8 @@
 # NOTE: IF YOU HAVE MORE SOURCE FILES, ADD HERE.
 set(
   ADDITIONAL_CPP_SOURCES
+  dsm/message_handler.h
+  dsm/message_handler.cc
   ${PROJECT_NAME}_server.cc
 )
 

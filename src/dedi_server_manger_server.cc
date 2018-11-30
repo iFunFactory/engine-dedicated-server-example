@@ -9,7 +9,7 @@
 #include <gflags/gflags.h>
 
 #include "dedi_server_manger_object.h"
-
+#include "dsm/message_handler.h"
 
 // You can differentiate game server flavors.
 // You can see more details in the following link.
@@ -56,6 +56,9 @@ class DediServerMangerServer : public Component {
     // 보다 자세한 사항은 MANIFEST.json 파일 안의 Redis 항목에 있는 'redis_servers'
     // 를 참고해주세요.
     LOG_ASSERT(FLAGS_enable_redis);
+
+    // 클라이언트 요청 핸들러를 등록합니다.
+    dsm::RegisterMessageHandler();
 
     return true;
   }
