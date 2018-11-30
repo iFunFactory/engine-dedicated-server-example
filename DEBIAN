@@ -1,0 +1,16 @@
+################################################################################
+# PLEASE EDIT THIS FILE TO ACCOMMODATE YOUR PROJECT SETTING.
+#
+# This file allows a subset of control information allowed in debian/control.
+#
+# The following keyword will be respected:
+#   Section, Priority, Maintainer, Depends
+#
+# Please refer to the debian manual for the meaning of the keywords.
+################################################################################
+
+Section: devel
+Priority: optional
+Maintainer: unknown
+Build-Depends: funapi1-dev (>=1.0.0)
+Depends: funapi1-runtime (>=1.0.0)

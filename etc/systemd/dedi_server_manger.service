@@ -1,0 +1,37 @@
+# Systemd service configuration for dedi_server_manger
+[Unit]
+Description=iFun Engine game - dedi_server_manger
+After=syslog.target network-online.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+# If this limit is not enough, you SHOULD look after
+# "net.netfilter.nf_conntrack_tcp_timeout_time_wait" (using sysctl)
+LimitNOFILE=999999
+
+# It is strongly recommended that one should use uid:gid other than the root
+# NOTE: Please update User=, Group=, and ExecStartPre=
+User=root
+Group=root
+
+# Makes the daemon automatically restart
+Type=simple
+Restart=always
+RestartSec=5s
+
+# create directories, and change permissions (with root privileges)
+PermissionsStartOnly=true
+ExecStartPre=/bin/mkdir -p /var/log/funapi/dedi_server_manger/glog \
+  /var/log/funapi/dedi_server_manger/activity \
+  /var/log/funapi/dedi_server_manger/counter \
+  /var/crash/funapi/dedi_server_manger
+# NOTE: change root:root to service's uid:gid
+ExecStartPre=/bin/chown -R root:root /var/log/funapi/dedi_server_manger/glog \
+  /var/log/funapi/dedi_server_manger/activity \
+  /var/log/funapi/dedi_server_manger/counter \
+  /var/crash/funapi/dedi_server_manger
+
+EnvironmentFile=/etc/default/dedi_server_manger
+ExecStart=/usr/bin/dedi_server_manger-launcher

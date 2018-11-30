@@ -1,0 +1,7 @@
+﻿If you have data files that the server must load at the booting time,
+you can put those files in the JSON format here.
+
+For more information, please see this
+
+Korean: http://www.ifunfactory.com/engine/documents/reference/ko/game-management.html?#handling-game-data
+English: http://www.ifunfactory.com/engine/documents/reference/en/game-management.html?#handling-game-data
