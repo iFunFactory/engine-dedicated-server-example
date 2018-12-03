@@ -8,8 +8,13 @@
 # NOTE: IF YOU HAVE MORE SOURCE FILES, ADD HERE.
 set(
   ADDITIONAL_CPP_SOURCES
+  dsm/session_response.h
   dsm/message_handler.h
   dsm/message_handler.cc
+  dsm/authentication_helper.h
+  dsm/authentication_helper.cc
+  dsm/dedi_server_helper.h
+  dsm/dedi_server_helper.cc
   ${PROJECT_NAME}_server.cc
 )
 

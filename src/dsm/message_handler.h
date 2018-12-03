@@ -7,12 +7,9 @@
 #ifndef DEDI_SERVER_EXAMPLE_ENGINE_SRC_DSM_MESSAGE_HANDLER_H_
 #define DEDI_SERVER_EXAMPLE_ENGINE_SRC_DSM_MESSAGE_HANDLER_H_
 
-#include <funapi.h>
-
 namespace dsm {
 
 void RegisterMessageHandler();
-
 
 }  // namespace dsm
 
