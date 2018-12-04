@@ -78,6 +78,22 @@ void SendMyMessage(const Ptr<Session> &session,
 }
 
 
+void OnSessionOpened(const Ptr<Session> &session) {
+  LOG(INFO) << "Session opened: session=" << session->id();
+}
+
+
+void OnSessionClosed(const Ptr<Session> &session, SessionCloseReason reason) {
+  LOG(INFO) << "Session closed: session=" << session->id()
+            << ", reason=" << reason;
+
+  // 세션 연결이 어떤 이유에서 닫혔습니다. 이 세션이 로그인을 했다면
+  // 다음에 다시 로그인할 수 있도록 로그아웃 처리를 해야 합니다.
+  // 이후 과정은 authentication_helper.cc 를 참고하세요.
+  AuthenticationHelper::Logout(session);
+}
+
+
 void OnLoginRequest(const Ptr<Session> &session, const Json &message) {
   const SessionId &session_id = session->id();
   const Json &session_context = session->GetContext();
@@ -94,8 +110,7 @@ void OnLoginRequest(const Ptr<Session> &session, const Json &message) {
             << ", message=" << message.ToString(false);
 
   // 이후 과정은 authentication_helper.cc 를 참고하세요.
-  AuthenticationHelper::ProcessAuthentication(
-      session, message, response_handler);
+  AuthenticationHelper::Login(session, message, response_handler);
 }
 
 
@@ -129,6 +144,8 @@ void OnSpawnRequest(const Ptr<Session> &session, const Json &message) {
 
 
 void RegisterMessageHandler() {
+  // 세션 열림 및 닫힘 핸들러를 등록합니다.
+  HandlerRegistry::Install2(OnSessionOpened, OnSessionClosed);
   // 로그인 요청 핸들러를 등록합니다.
   HandlerRegistry::Register(kLoginRequest, OnLoginRequest);
   // 데디케이티드 서버 스폰(Spawn) 요청 핸들러를 등록합니다.

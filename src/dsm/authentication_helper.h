@@ -15,11 +15,11 @@ namespace dsm {
 
 class AuthenticationHelper {
  public:
-  static void ProcessAuthentication(
-      const Ptr<Session> &session,
-      const Json &message,
-      const SessionResponseHandler &response_handler);
+  static void Login(const Ptr<Session> &session,
+                    const Json &message,
+                    const SessionResponseHandler &handler);
 
+  static void Logout(const Ptr<Session> &session);
 };
 
 }  // namespace dsm
