@@ -27,7 +27,8 @@ const char *kMatchData = "match_data";
 
 void OnDedicatedServerSpawned(const Uuid &match_id,
                               const std::vector<string> &account_ids,
-                              bool success) {
+                              bool success,
+                              const SessionResponseHandler &handler) {
   //
   // 데디케이티드 서버 스폰 결과를 받는 콜백 핸들러입니다.
   //
@@ -60,22 +61,30 @@ void OnDedicatedServerSpawned(const Uuid &match_id,
 
   //
   // 클라이언트가 데디케이티드 서버로 접속하기 전에 처리해야 할 것이
-  // 있을 경우, 이 곳에서 처리해야 합니다. 단, 다음 두 가지 사항을 주의해주세요.
-  //
-  // 1. 데디케이티드 서버 접속 메시지를 클라이언트로 보내는 건 엔진 내부에서 이 핸들러
-  // 호출이 끝난 직후에 하므로 별도 처리할 필요가 없습니다.
-  //
-  // 2. 이 곳에서 보낸 메시지를 클라이언트가 받는 시점엔 이미 이 서버와 연결을 끊고
-  // 데디케이티드 서버와 연결했을 가능성이 높습니다.
-  //
-  // 그럼에도 불구하고 클라이언트로 보낼 메시지가 있을 경우 다음 코드를 사용할 수
-  // 있습니다.
-  //
-  // const Ptr<Session> session = AccountManager::FindLocalSession(account_id);
-  // if (not session) {  // session = Session::kNullPtr
-  //   return Session::kNullptr;
-  // }
-  //
+  // 있을 경우, 이 곳에서 처리해야 합니다.
+  const Ptr<Session> session = AccountManager::FindLocalSession(account_id);
+  if (not session) {  // session = Session::kNullPtr
+    // 다른 곳 또는 사용자가 세션을 닫아 로그아웃 한 상태입니다.
+    handler(ResponseResult::FAILED,
+            SessionResponse(Session::kNullPtr, 500,
+                            "Internal server error.", Json()));
+    return;
+  }
+
+  if (not success) {
+    handler(ResponseResult::FAILED,
+            SessionResponse(session, 500, "Internal server error.", Json()));
+    return;
+  }
+
+  // 클라이언트에게 보낼 응답은 이 곳에 설정합니다.
+  Json response_data;
+  response_data["dedi_key1"] = "value1";
+  response_data["dedi_key2"] = "value2";
+  response_data["dedi_key3"] = "value3";
+
+  handler(ResponseResult::OK,
+          SessionResponse(session, 200, "OK", response_data));
 }
 
 }  // unnamed namespace
@@ -83,9 +92,9 @@ void OnDedicatedServerSpawned(const Uuid &match_id,
 void DediServerHelper::ProcessDediServerSpawn1(
     const Ptr<Session> &session,
     const Json &message,
-    const SessionResponseHandler &response_handler) {
+    const SessionResponseHandler &handler) {
   LOG_ASSERT(session);
-  LOG_ASSERT(response_handler);
+  LOG_ASSERT(handler);
 
 
   //
@@ -115,9 +124,8 @@ void DediServerHelper::ProcessDediServerSpawn1(
                << kUserData << "'"
                << ": session=" << session->id()
                << ", message=" << message.ToString(false);
-    response_handler(
-        ResponseResult::FAILED,
-        SessionResponse(session, 400, "Missing required fields.", Json()));
+    handler(ResponseResult::FAILED,
+            SessionResponse(session, 400, "Missing required fields.", Json()));
     return;
   }
 
@@ -194,7 +202,7 @@ void DediServerHelper::ProcessDediServerSpawn1(
   // 데디케이티드 서버
   DedicatedServerManager::Spawn(
       match_id, match_data, dedicated_server_args, account_ids, user_data,
-      OnDedicatedServerSpawned);
+      bind(&OnDedicatedServerSpawned, _1, _2, _3, handler));
 }
 
 }  // namespace dsm
