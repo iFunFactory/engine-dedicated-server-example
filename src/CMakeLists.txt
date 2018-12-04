@@ -15,6 +15,12 @@ set(
   dsm/authentication_helper.cc
   dsm/dedi_server_helper.h
   dsm/dedi_server_helper.cc
+  bot/bot_client.h
+  bot/bot_client.cc
+  bot/bot_authentication_helper.h
+  bot/bot_authentication_helper.cc
+  bot/bot_dedi_server_spawn_helper.h
+  bot/bot_dedi_server_spawn_helper.cc
   ${PROJECT_NAME}_server.cc
 )
 

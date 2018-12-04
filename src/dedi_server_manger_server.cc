@@ -8,8 +8,10 @@
 #include <funapi.h>
 #include <gflags/gflags.h>
 
-#include "dedi_server_manger_object.h"
-#include "dsm/message_handler.h"
+#include <src/dedi_server_manger_object.h>
+
+#include <src/bot/bot_client.h>
+#include <src/dsm/message_handler.h>
 
 // You can differentiate game server flavors.
 // You can see more details in the following link.
@@ -23,13 +25,21 @@ DECLARE_string(app_flavor);
 // MANIFEST.json 에 있는 'enable_redis' 플래그
 DECLARE_bool(enable_redis);
 
+
+// 봇 클라이언트 개수를 지정합니다.
+// dedi_server_manger.bot-local -bot_clients=<클라이언트 개수> 로 지정할 수
+// 있습니다.
+DEFINE_int64(bot_clients, 1, "Number of clients that are used for test.");
+
+
 namespace {
 
 //
 // DedicatedServerManagerExampleServer 컴포넌트
 //
 // 아이펀 엔진이 실행할 컴포넌트를 정의하는 곳입니다.
-// 프로젝트 생성 후 개발자가 만들어야 할 모든 코드는 src/dsm 에 있습니다.
+// 1. 프로젝트 생성 후 개발자가 만들어야 할 모든 코드는 src/dsm 에 있습니다.
+// 2. bot 클라이언트가 사용할 코드는 src/bot 에 있습니다.
 //
 class DediServerMangerServer : public Component {
  public:
@@ -58,7 +68,12 @@ class DediServerMangerServer : public Component {
     LOG_ASSERT(FLAGS_enable_redis);
 
     // 클라이언트 요청 핸들러를 등록합니다.
-    dsm::RegisterMessageHandler();
+    if (FLAGS_app_flavor == "server") {
+      dsm::RegisterMessageHandler();
+    } else {
+      LOG_ASSERT(FLAGS_app_flavor == "bot");
+      bot::BotClient::Install(4 /* 스레드 개수 */, 1 /* 클라이언트 개수 */);
+    }
 
     return true;
   }
@@ -72,6 +87,13 @@ class DediServerMangerServer : public Component {
     // 필수적인 기능들을 추가하는 것이 좋습니다.
     //
 
+    if (FLAGS_app_flavor == "server") {
+    } else {
+      LOG_ASSERT(FLAGS_app_flavor == "bot");
+      // 봇 클라이언트를 실행합니다.
+      bot::BotClient::Start();
+    }
+
     return true;
   }
 
@@ -84,6 +106,13 @@ class DediServerMangerServer : public Component {
     // 추가해야 합니다. 서버가 알 수 없는 이유로 충돌한 경우에도 이 함수를 호출하나
     // 항상 보장하는 것은 아니므로 주의해야 합니다.
     //
+
+    if (FLAGS_app_flavor == "server") {
+    } else {
+      LOG_ASSERT(FLAGS_app_flavor == "bot");
+      // 봇 클라이언트 실행을 종료합니다.
+      bot::BotClient::Uninstall();
+    }
 
     return true;
   }
