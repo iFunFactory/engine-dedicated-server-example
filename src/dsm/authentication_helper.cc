@@ -24,6 +24,10 @@ const char *kLoggedIn = "logged_in";
 void SetLogInContext(const Ptr<Session> &session,
                      const string &platform,
                      const bool logged_in) {
+  // 세션 ID 로 직렬화한 이벤트 위에서만 수정이 가능해야 합니다.
+  // 그렇지 않을 경우 동시에 두 스레드에서 이 정보를 수정할 수 있습니다.
+  LOG_ASSERT(GetCurrentEventTag() == session->id());
+
   Json &context = session->GetContext();
   context[kPlatformName] = platform;
   context[kLoggedIn] = logged_in;
@@ -31,6 +35,10 @@ void SetLogInContext(const Ptr<Session> &session,
 
 
 void ClearLogInContext(const Ptr<Session> &session) {
+  // 세션 ID 로 직렬화한 이벤트 위에서만 수정이 가능해야 합니다.
+  // 그렇지 않을 경우 동시에 두 스레드에서 이 정보를 수정할 수 있습니다.
+  LOG_ASSERT(GetCurrentEventTag() == session->id());
+
   Json &context = session->GetContext();
   context.RemoveAllAttributes();
 }
@@ -93,19 +101,22 @@ void OnLoggedIn(const string &account_id,
             << ", platform=" << platform
             << ", try_count=" << try_count;
 
-  // 이 정보는 서버에서 세션을 관리하기 위한 용도로만 사용하며 클라이언트로
-  // 보내지 않습니다. account_id 는 AccountManager::FindLocalAccount() 함수로
-  // 가져올 수 있으므로 포함하지 않습니다.
-  SetLogInContext(session, platform, true /*logged in*/);
+  // 동시에 두 스레드에서 접근하지 못하게 세션 ID 로 직렬화 한 이벤트 위에서 제거합니다.
+  Event::Invoke([handler, session, platform](){
+    // 이 정보는 서버에서 세션을 관리하기 위한 용도로만 사용하며 클라이언트로
+    // 보내지 않습니다. account_id 는 AccountManager::FindLocalAccount() 함수로
+    // 가져올 수 있으므로 포함하지 않습니다.
+    SetLogInContext(session, platform, true /*logged in*/);
 
-  // 클라이언트에게 보낼 응답은 이 곳에 설정합니다.
-  Json response_data;
-  response_data["key1"] = "value1";
-  response_data["key2"] = "value2";
-  response_data["key3"] = "value3";
+    // 클라이언트에게 보낼 응답은 이 곳에 설정합니다.
+    Json response_data;
+    response_data["key1"] = "value1";
+    response_data["key2"] = "value2";
+    response_data["key3"] = "value3";
 
-  handler(ResponseResult::OK,
-          SessionResponse(session, 200, "OK", response_data));
+    handler(ResponseResult::OK,
+            SessionResponse(session, 200, "OK", response_data));
+  }, session->id());
 }
 
 
@@ -129,7 +140,10 @@ void OnLoggedOut(const string &account_id,
             << ", account_id=" << account_id
             << ", platform=" << platform;
 
-  ClearLogInContext(session);
+  // 동시에 두 스레드에서 접근하지 못하게 세션 ID 로 직렬화 한 이벤트 위에서 제거합니다.
+  Event::Invoke([session]() {
+    ClearLogInContext(session);
+  }, session->id());
 }
 
 }  // unnamed namespace

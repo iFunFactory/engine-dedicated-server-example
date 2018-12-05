@@ -100,6 +100,7 @@ void OnLoginRequest(const Ptr<Session> &session, const Json &message) {
 
   SessionResponseHandler response_handler =
       [](const ResponseResult error, const SessionResponse &response) {
+        LOG_ASSERT(response.session);
         SendMyMessage(response.session, kLoginRequest, response.error_code,
                       response.error_message, response.data);
       };
