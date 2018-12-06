@@ -12,6 +12,7 @@
 #include "authentication_helper.h"
 #include "session_response.h"
 #include "dedi_server_helper.h"
+#include "matchmaking_helper.h"
 
 
 //
@@ -40,6 +41,8 @@ namespace {
 const char *kLoginRequest = "login";
 
 const char *kSpawnRequest = "spawn";
+
+const char *kMatchThenSpawnRequest = "match";
 
 
 void SendMyMessage(const Ptr<Session> &session,
@@ -141,6 +144,28 @@ void OnSpawnRequest(const Ptr<Session> &session, const Json &message) {
   DediServerHelper::ProcessDediServerSpawn1(session, message, response_handler);
 }
 
+
+void OnMatchThenSpawnRequest(const Ptr<Session> &session, const Json &message) {
+  const SessionId &session_id = session->id();
+  const Json &session_context = session->GetContext();
+
+  LOG(INFO) << " OnMatchThenSpawnRequest"
+            << ": session=" << session_id
+            << ", context=" << session_context.ToString(false)
+            << ", message=" << message.ToString(false);
+
+  SessionResponseHandler response_handler =
+      [](const ResponseResult error, const SessionResponse &response) {
+        LOG_ASSERT(response.session);
+        SendMyMessage(response.session, kMatchThenSpawnRequest,
+                      response.error_code, response.error_message,
+                      response.data);
+      };
+
+  // 이후 과정은 matchmaking_helper.cc 를 참고하세요.
+  MatchmakingHelper::ProcessMatchmaking(session, message, response_handler);
+}
+
 }  // unnamed namespace
 
 
@@ -151,7 +176,8 @@ void RegisterMessageHandler() {
   HandlerRegistry::Register(kLoginRequest, OnLoginRequest);
   // 데디케이티드 서버 스폰(Spawn) 요청 핸들러를 등록합니다.
   HandlerRegistry::Register(kSpawnRequest, OnSpawnRequest);
-
+  // 매치메이킹 후 매치가 성사된 유저들을 모아 데디케이티드 서버를 스폰합니다.
+  HandlerRegistry::Register(kMatchThenSpawnRequest, OnMatchThenSpawnRequest);
 }
 
 }  // namespace dsm

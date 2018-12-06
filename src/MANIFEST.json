@@ -8,128 +8,128 @@
         "example_arg2": 100
       },
       "dependency": {
-          "AppInfo": {
-            "app_id": "DediServerManger",
-            "client_current_version": "0.0.3",
-            "client_compatible_versions": ["0.0.1", "0.0.2"],
-            "client_update_info": "",
-            "client_update_uri": ""
-          },
-          "EventDispatcher": {
-            "event_threads_size": 4,
-            "enable_event_profiler": true,
-            "enable_outstanding_event_profiler": true,
-            "slow_event_log_threshold_in_ms": 300,
-            "event_timeout_in_ms": 30000,
-            "enable_inheriting_event_tag": true,
-            "enable_random_event_tag": true,
-            "enable_event_thread_checker": true
-          },
-          "Logging": {
-            "activity_log_output": "json://activity/activity_log.json",
-            "activity_log_rotation_interval": 60,
-            "activity_log_write_schema": true,
-            "glog_flush_interval": 1,
-            "glog_retention_period_in_days": 30
-          },
-          "IoService": {
-            "internal_threads_size": 4
-          },
-          "SessionService": {
-            "tcp_json_port": 8012,
-            "udp_json_port": 0,
-            "http_json_port": 8018,
-            "websocket_json_port": 0,
-            "tcp_protobuf_port": 0,
-            "udp_protobuf_port": 0,
-            "http_protobuf_port": 0,
-            "websocket_protobuf_port": 0,
-            "session_timeout_in_second" : 300,
-            "use_session_reliability": false,
-            "session_reliability_send_queue_warning_threshold": 64,
-            "delayed_ack_interval_in_ms": 0,
-            "use_sequence_number_validation": false,
-            "use_encryption": false,
-            "tcp_encryptions": ["chacha20"],
-            "udp_encryptions": ["ife2"],
-            "http_encryptions": [],
-            "websocket_encryptions":[],
-            // Client should use public_key = "de98fcdc7aa79a03e8e9be28ebf19685b1187962d555b924417bfba0f5bd3124"
-            // 클라이언트에서는 public key로 "de98fcdc7aa79a03e8e9be28ebf19685b1187962d555b924417bfba0f5bd3124" 를 사용해야 합니다.
-            "encryption_ecdh_key": "88bcbe266cdff254c5fa9903f8f8578d6d94df385a8761464ba0a5a6de66ea28",
-            "disable_tcp_nagle": true,
-            "enable_http_message_list": true,
-            "session_message_logging_level": 0,
-            "enable_per_message_metering_in_counter": false,
-            "json_protocol_schema_dir": "json_protocols",
-            "ping_sampling_interval_in_second": 0,
-            "ping_message_size_in_byte": 0,
-            "ping_timeout_in_second": 0,
-            "close_transport_when_session_close": true,
-            "send_session_id_as_string": true,
-            "send_session_id_only_once": false,
-            "network_io_threads_size": 4,
+        "AppInfo": {
+          "app_id": "DediServerManger",
+          "client_current_version": "0.0.3",
+          "client_compatible_versions": ["0.0.1", "0.0.2"],
+          "client_update_info": "",
+          "client_update_uri": ""
+        },
+        "EventDispatcher": {
+          "event_threads_size": 4,
+          "enable_event_profiler": true,
+          "enable_outstanding_event_profiler": true,
+          "slow_event_log_threshold_in_ms": 300,
+          "event_timeout_in_ms": 30000,
+          "enable_inheriting_event_tag": true,
+          "enable_random_event_tag": true,
+          "enable_event_thread_checker": true
+        },
+        "Logging": {
+          "activity_log_output": "json://activity/activity_log.json",
+          "activity_log_rotation_interval": 60,
+          "activity_log_write_schema": true,
+          "glog_flush_interval": 1,
+          "glog_retention_period_in_days": 30
+        },
+        "IoService": {
+          "internal_threads_size": 4
+        },
+        "SessionService": {
+          "tcp_json_port": 8012,
+          "udp_json_port": 0,
+          "http_json_port": 8018,
+          "websocket_json_port": 0,
+          "tcp_protobuf_port": 0,
+          "udp_protobuf_port": 0,
+          "http_protobuf_port": 0,
+          "websocket_protobuf_port": 0,
+          "session_timeout_in_second" : 300,
+          "use_session_reliability": false,
+          "session_reliability_send_queue_warning_threshold": 64,
+          "delayed_ack_interval_in_ms": 0,
+          "use_sequence_number_validation": false,
+          "use_encryption": false,
+          "tcp_encryptions": ["chacha20"],
+          "udp_encryptions": ["ife2"],
+          "http_encryptions": [],
+          "websocket_encryptions":[],
+          // Client should use public_key = "de98fcdc7aa79a03e8e9be28ebf19685b1187962d555b924417bfba0f5bd3124"
+          // 클라이언트에서는 public key로 "de98fcdc7aa79a03e8e9be28ebf19685b1187962d555b924417bfba0f5bd3124" 를 사용해야 합니다.
+          "encryption_ecdh_key": "88bcbe266cdff254c5fa9903f8f8578d6d94df385a8761464ba0a5a6de66ea28",
+          "disable_tcp_nagle": true,
+          "enable_http_message_list": true,
+          "session_message_logging_level": 0,
+          "enable_per_message_metering_in_counter": false,
+          "json_protocol_schema_dir": "json_protocols",
+          "ping_sampling_interval_in_second": 0,
+          "ping_message_size_in_byte": 0,
+          "ping_timeout_in_second": 0,
+          "close_transport_when_session_close": true,
+          "send_session_id_as_string": true,
+          "send_session_id_only_once": false,
+          "network_io_threads_size": 4,
 
-            // TLS/SSL configuration
-            "use_ssl_on_tcp_json": false,
-            "use_ssl_on_tcp_protobuf": false,
-            "use_ssl_on_http_json": false,
-            "use_ssl_on_http_protobuf": false,
-            "ssl_certification_path": "",
-            "ssl_passphrase": "",
-            "ssl_private_key_path": "",
-            "ssl_ciphers": "ECDH+AESGCM:ECDH+AES256:ECDH+AES128:RSA+AESGCM:!aNULL:!eNULL:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!RC4:!SEED",
+          // TLS/SSL configuration
+          "use_ssl_on_tcp_json": false,
+          "use_ssl_on_tcp_protobuf": false,
+          "use_ssl_on_http_json": false,
+          "use_ssl_on_http_protobuf": false,
+          "ssl_certification_path": "",
+          "ssl_passphrase": "",
+          "ssl_private_key_path": "",
+          "ssl_ciphers": "ECDH+AESGCM:ECDH+AES256:ECDH+AES128:RSA+AESGCM:!aNULL:!eNULL:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!RC4:!SEED",
 
-            // NIC binding
-            // Each transport will bind to specified comma-separated list of NIC.
-            // For empty list, it will bind to "0.0.0.0".
-            // 지정된 ,로 구분된 NIC 목록을 각 트랜스포트가 사용하게 합니다.
-            // 빈 목록인 경우 "0.0.0.0" 을 사용합니다.
-            "tcp_nic": "",
-            "udp_nic": "",
-            "http_nic": "",
-            "websocket_nic": "",
+          // NIC binding
+          // Each transport will bind to specified comma-separated list of NIC.
+          // For empty list, it will bind to "0.0.0.0".
+          // 지정된 ,로 구분된 NIC 목록을 각 트랜스포트가 사용하게 합니다.
+          // 빈 목록인 경우 "0.0.0.0" 을 사용합니다.
+          "tcp_nic": "",
+          "udp_nic": "",
+          "http_nic": "",
+          "websocket_nic": "",
 
-            // HTTP CORS (for WebGL or HTML client)
-            // If your clients run on the web browser, please set the flags.
-            // To get valid CORS preflight response, a client must be
-            // on the domain from one of the allowed_origins flag.
-            // If allowed_origins has "*", all domains are allowed.
-            // 클라이언트를 웹 브라우저에서 실행하는 경우 아래 설정 필요함.
-            // allowed_origins에 해당하는 주소에서 다운로드 받은 클라이언트만
-            // 정상적인 CORS 처리가 이뤄지며, "*" 이 목록에 있다면,
-            // 모든 도메인에서 다운로드 받은 클라이언트를 허용한다.
-            "http_enable_cross_origin_resource_sharing": false,
-            "http_cross_origin_resource_sharing_allowed_origins": ["*"]
-          },
-          "Timer": {},
-          "Object": {
-            "enable_database" : false,
-            "cache_expiration_in_ms": 300000,
-            "copy_cache_expiration_in_ms": 700,
-            "enable_delayed_db_update" : false,
-            "db_update_delay_in_second" : 10,
-            "db_mysql_server_address" : "tcp://127.0.0.1:3306",
-            "db_mysql_id" : "funapi",
-            "db_mysql_pw" : "funapi",
-            "db_mysql_database" : "funapi",
-            "db_read_connection_count" : 8,
-            "db_write_connection_count" : 16,
-            "db_key_shard_read_connection_count" : 8,
-            "db_key_shard_write_connection_count" : 16,
-            "db_character_set": "utf8",
-            "use_db_select_transaction_isolation_level_read_uncommitted": true,
-            "use_db_stored_procedure": true,
-            "use_db_stored_procedure_full_name": true,
-            "export_db_schema": false,
-            "use_db_char_type_for_object_id": false,
-            "enable_assert_no_rollback" : true,
-            "object_id_pool_initial_count": 1000
-          },
-          "AccountManager": {
-            // To redirect client to servers behind load-balancers, set
-            // redirection_strict_check_server_id to "false".
-            "redirection_strict_check_server_id": true,
+          // HTTP CORS (for WebGL or HTML client)
+          // If your clients run on the web browser, please set the flags.
+          // To get valid CORS preflight response, a client must be
+          // on the domain from one of the allowed_origins flag.
+          // If allowed_origins has "*", all domains are allowed.
+          // 클라이언트를 웹 브라우저에서 실행하는 경우 아래 설정 필요함.
+          // allowed_origins에 해당하는 주소에서 다운로드 받은 클라이언트만
+          // 정상적인 CORS 처리가 이뤄지며, "*" 이 목록에 있다면,
+          // 모든 도메인에서 다운로드 받은 클라이언트를 허용한다.
+          "http_enable_cross_origin_resource_sharing": false,
+          "http_cross_origin_resource_sharing_allowed_origins": ["*"]
+        },
+        "Timer": {},
+        "Object": {
+          "enable_database" : false,
+          "cache_expiration_in_ms": 300000,
+          "copy_cache_expiration_in_ms": 700,
+          "enable_delayed_db_update" : false,
+          "db_update_delay_in_second" : 10,
+          "db_mysql_server_address" : "tcp://127.0.0.1:3306",
+          "db_mysql_id" : "funapi",
+          "db_mysql_pw" : "funapi",
+          "db_mysql_database" : "funapi",
+          "db_read_connection_count" : 8,
+          "db_write_connection_count" : 16,
+          "db_key_shard_read_connection_count" : 8,
+          "db_key_shard_write_connection_count" : 16,
+          "db_character_set": "utf8",
+          "use_db_select_transaction_isolation_level_read_uncommitted": true,
+          "use_db_stored_procedure": true,
+          "use_db_stored_procedure_full_name": true,
+          "export_db_schema": false,
+          "use_db_char_type_for_object_id": false,
+          "enable_assert_no_rollback" : true,
+          "object_id_pool_initial_count": 1000
+        },
+        "AccountManager": {
+          // To redirect client to servers behind load-balancers, set
+          // redirection_strict_check_server_id to "false".
+          "redirection_strict_check_server_id": true,
 
             // Should be the same value for all servrers.
             // 모든 서버에서 같은 값을 사용해야 합니다.

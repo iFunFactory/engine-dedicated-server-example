@@ -15,6 +15,12 @@ set(
   dsm/authentication_helper.cc
   dsm/dedi_server_helper.h
   dsm/dedi_server_helper.cc
+  dsm/matchmaking_type.h
+  dsm/matchmaking_type.cc
+  dsm/matchmaking_server_wrapper.h
+  dsm/matchmaking_server_wrapper.cc
+  dsm/matchmaking_helper.h
+  dsm/matchmaking_helper.cc
   bot/bot_client.h
   bot/bot_client.cc
   bot/bot_authentication_helper.h

@@ -11,8 +11,9 @@
 #include <src/dedi_server_manger_object.h>
 
 #include <src/bot/bot_client.h>
-#include <src/dsm/message_handler.h>
 #include <src/dsm/dedi_server_helper.h>
+#include <src/dsm/matchmaking_server_wrapper.h>
+#include <src/dsm/message_handler.h>
 
 // You can differentiate game server flavors.
 // You can see more details in the following link.
@@ -90,6 +91,7 @@ class DediServerMangerServer : public Component {
     //
 
     if (FLAGS_app_flavor == "server") {
+      dsm::MatchmakingServerWrapper::Start();
     } else {
       LOG_ASSERT(FLAGS_app_flavor == "bot");
       // 봇 클라이언트를 실행합니다.
