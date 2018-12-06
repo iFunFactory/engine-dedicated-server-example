@@ -15,6 +15,8 @@ namespace dsm {
 
 class DediServerHelper {
  public:
+  static void RegisterHandler();
+
   static void ProcessDediServerSpawn1(
       const Ptr<Session> &session,
       const Json &message,

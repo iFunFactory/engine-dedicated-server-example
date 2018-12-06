@@ -87,6 +87,40 @@ void OnDedicatedServerSpawned(const Uuid &match_id,
           SessionResponse(session, 200, "OK", response_data));
 }
 
+
+void OnJoinedCallbackPosted(const Uuid &match_id,
+                            const string &account_id) {
+  LOG(INFO) << "OnJoinedCallbackPosted"
+            << ": match_id=" << to_string(match_id)
+            << ", account_id=" << account_id;
+}
+
+
+void OnLeftCallbackPosted(const Uuid &match_id,
+                          const string &account_id) {
+  LOG(INFO) << "OnLeftCallbackPosted"
+            << ": match_id=" << to_string(match_id)
+            << ", account_id=" << account_id;
+}
+
+
+void OnCustomCallbackPosted(const Uuid &match_id,
+                            const Json &data) {
+  LOG(INFO) << "OnCustomCallbackPosted"
+            << ": match_id=" << to_string(match_id)
+            << ", data=" << data.ToString(false);
+}
+
+
+void OnMatchResultPosted(const Uuid &match_id,
+                         const Json &match_data,
+                         bool success) {
+  LOG(INFO) << "OnMatchResultPosted"
+            << ": match_id=" << to_string(match_id)
+            << ", success=" << (success ? "true" : "false")
+            << ", match_data=" << match_data.ToString(false);
+}
+
 }  // unnamed namespace
 
 void DediServerHelper::ProcessDediServerSpawn1(
@@ -162,8 +196,7 @@ void DediServerHelper::ProcessDediServerSpawn1(
   // 데디케이티드 서버 프로세스 실행 시 함께 넘겨 줄 인자를 설정합니다.
   // 유니티, 언리얼 데디케이티드 서버에서 지원하는 인자가 있거나, 별도로
   // 인자를 지정해야 할 경우 이 곳에 입력하면 됩니다.
-  const std::vector<string> dedicated_server_args {
-      "-ExtraArg1=value1", "-ExtraArg2=value2", "-ExtraArg3=value3" };
+  const std::vector<string> dedicated_server_args {"HighRise?game=FFA", "-log"};
 
   // 4. account_ids
   // 데디케이티드 서버 프로세스 생성 시 함께 전달할 계정 ID를 추가합니다.
@@ -203,6 +236,14 @@ void DediServerHelper::ProcessDediServerSpawn1(
   DedicatedServerManager::Spawn(
       match_id, match_data, dedicated_server_args, account_ids, user_data,
       bind(&OnDedicatedServerSpawned, _1, _2, _3, handler));
+}
+
+
+void DediServerHelper::RegisterHandler() {
+  DedicatedServerManager::RegisterMatchResultCallback(OnMatchResultPosted);
+  DedicatedServerManager::RegisterUserEnteredCallback(OnJoinedCallbackPosted);
+  DedicatedServerManager::RegisterUserLeftCallback(OnLeftCallbackPosted);
+  DedicatedServerManager::RegisterCustomCallback(OnCustomCallbackPosted);
 }
 
 }  // namespace dsm

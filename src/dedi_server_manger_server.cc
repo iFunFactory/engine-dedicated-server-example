@@ -12,6 +12,7 @@
 
 #include <src/bot/bot_client.h>
 #include <src/dsm/message_handler.h>
+#include <src/dsm/dedi_server_helper.h>
 
 // You can differentiate game server flavors.
 // You can see more details in the following link.
@@ -70,6 +71,7 @@ class DediServerMangerServer : public Component {
     // 클라이언트 요청 핸들러를 등록합니다.
     if (FLAGS_app_flavor == "server") {
       dsm::RegisterMessageHandler();
+      dsm::DediServerHelper::RegisterHandler();
     } else {
       LOG_ASSERT(FLAGS_app_flavor == "bot");
       bot::BotClient::Install(4 /* 스레드 개수 */, 1 /* 클라이언트 개수 */);
