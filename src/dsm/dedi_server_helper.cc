@@ -123,13 +123,13 @@ void OnMatchResultPosted(const Uuid &match_id,
 
 }  // unnamed namespace
 
+
 void DediServerHelper::ProcessDediServerSpawn1(
     const Ptr<Session> &session,
     const Json &message,
     const SessionResponseHandler &handler) {
   LOG_ASSERT(session);
   LOG_ASSERT(handler);
-
 
   //
   // 데디케이티드 서버 스폰 요청 예제 1 (방 생성)
@@ -156,7 +156,7 @@ void DediServerHelper::ProcessDediServerSpawn1(
       not message.HasAttribute(kMatchData, Json::kObject)) {
     LOG(ERROR) << "The message does not have '" << kAccountId << "' or '"
                << kUserData << "'"
-               << ": session=" << session->id()
+               << ": session_id=" << session->id()
                << ", message=" << message.ToString(false);
     handler(ResponseResult::FAILED,
             SessionResponse(session, 400, "Missing required fields.", Json()));
@@ -165,6 +165,19 @@ void DediServerHelper::ProcessDediServerSpawn1(
 
   const string &account_id = message[kAccountId].GetString();
   const Json &data = message[kUserData];
+
+  // 전달한 ID로 로그인한 세션이 있는지 확인합니다.
+  const Ptr<Session> related_session =
+      AccountManager::FindLocalSession(account_id);
+  // 로그인을 하지 않은 경우 진행할 수 없습니다.
+  if (not related_session) {
+    LOG(ERROR) << "Could not find the session that is related to the account ID"
+               << ": session_id=" << session->id()
+               << ", message=" << message.ToString(false);
+    handler(ResponseResult::FAILED,
+            SessionResponse(session, 400, "Invalid arguments", Json()));
+    return;
+  }
 
   //
   // 데디케이티드 서버 인자 설정 가이드

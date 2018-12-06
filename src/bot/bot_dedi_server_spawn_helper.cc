@@ -50,7 +50,7 @@ void OnSpawnResponseReceived(const Ptr<funtest::Session> &session,
 
   if (err_code != 200) {
     // 데디케이티드 서버 스폰이 실패했습니다.
-    LOG(ERROR) << "Error occurred while requesting login"
+    LOG(ERROR) << "Spawning a dedicated server was not successful"
                << ": message=" << err_message;
     the_spawn_handler(false, session);
     return;
@@ -101,7 +101,8 @@ void OnClientRedirection(const Ptr<funtest::Session> &session,
 void BotDediServerSpawnHelper::Install(
     const SpawnHandler &spawn_handler,
     const RedirectionHandler &redirection_handler) {
-
+  the_spawn_handler = spawn_handler;
+  the_redirection_handler = redirection_handler;
 
   funtest::Network::Register(kSpawnRequest, OnSpawnResponseReceived);
   funtest::Network::Register(kDediRedirect, OnClientRedirection);
