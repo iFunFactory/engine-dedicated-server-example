@@ -20,6 +20,11 @@ class MatchmakingHelper {
       const Ptr<Session> &session,
       const Json &message,
       const SessionResponseHandler &handler);
+
+  static void CancelMatchmaking(
+      const Ptr<Session> &session,
+      const Json &message,
+      const SessionResponseHandler &handler);
 };
 
 }  // namespace dsm

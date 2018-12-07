@@ -248,4 +248,57 @@ void MatchmakingHelper::ProcessMatchmaking(
       timeout);
 }
 
+
+void MatchmakingHelper::CancelMatchmaking(
+    const Ptr<Session> &session,
+    const Json &message,
+    const SessionResponseHandler &handler) {
+  // 클라이언트는 다음 메시지 형태로 매치메이킹 취소를 요청합니다.
+  // {
+  //   "account_id": "id",
+  //   "match_type": 1
+  // }
+
+  if (not message.HasAttribute(kAccountId, Json::kString) ||
+      not message.HasAttribute(kMatchType, Json::kInteger)) {
+    LOG(ERROR) << "Missing required fields: '" << kAccountId << "' / '"
+               << kMatchType << "'" << ": session_id=" << session->id()
+               << ", message=" << message.ToString(false);
+    handler(ResponseResult::FAILED,
+            SessionResponse(session, 400, "Missing required fields.", Json()));
+    return;
+  }
+
+  // 매치 타입
+  const int64_t match_type = message[kMatchType].GetInteger();
+  if (not IsValidMatchType(match_type)) {
+    LOG(ERROR) << "Invalid match_type"
+               << ": session_id=" << session->id()
+               << ", message=" << message.ToString(false);
+    handler(ResponseResult::FAILED,
+            SessionResponse(session, 400, "Invalid arguments.", Json()));
+    return;
+  }
+
+  const string &account_id = message[kAccountId].GetString();
+
+  MatchmakingClient::CancelCallback cancel_callback =
+      [session, handler](const string &account_id,
+                         MatchmakingClient::CancelResult result) {
+        if (result != MatchmakingClient::kCRSuccess) {
+          // kCRNoRequest (요청하지 않은 매치) 또는
+          // kCRError (엔진 내부 에러)가 올 수 있습니다.
+          handler(ResponseResult::FAILED,
+                  SessionResponse(session, 500, "Internal server error.",
+                                  Json()));
+        } else {
+          handler(ResponseResult::OK,
+                  SessionResponse(session, 200, "OK.", Json()));
+        }
+      };
+
+  MatchmakingClient::CancelMatchmaking(
+      match_type, account_id, cancel_callback);
+}
+
 }  // namespace dsm

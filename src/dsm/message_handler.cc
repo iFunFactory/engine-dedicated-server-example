@@ -44,6 +44,8 @@ const char *kSpawnRequest = "spawn";
 
 const char *kMatchThenSpawnRequest = "match";
 
+const char *kCancelMatchRequest = "cancel_match";
+
 
 void SendMyMessage(const Ptr<Session> &session,
                    const string &message_type,
@@ -166,6 +168,27 @@ void OnMatchThenSpawnRequest(const Ptr<Session> &session, const Json &message) {
   MatchmakingHelper::ProcessMatchmaking(session, message, response_handler);
 }
 
+
+void OnCancelMatchRequest(const Ptr<Session> &session, const Json &message) {
+  const SessionId &session_id = session->id();
+  const Json &session_context = session->GetContext();
+
+  LOG(INFO) << " OnCancelMatchRequest"
+            << ": session=" << session_id
+            << ", context=" << session_context.ToString(false)
+            << ", message=" << message.ToString(false);
+
+  SessionResponseHandler response_handler =
+      [](const ResponseResult error, const SessionResponse &response) {
+        LOG_ASSERT(response.session);
+        SendMyMessage(response.session, kCancelMatchRequest, response.error_code,
+                      response.error_message, response.data);
+      };
+
+  // 이후 과정은 matchmaking_helper.cc 를 참고하세요.
+  MatchmakingHelper::CancelMatchmaking(session, message, response_handler);
+}
+
 }  // unnamed namespace
 
 
@@ -178,6 +201,9 @@ void RegisterMessageHandler() {
   HandlerRegistry::Register(kSpawnRequest, OnSpawnRequest);
   // 매치메이킹 후 매치가 성사된 유저들을 모아 데디케이티드 서버를 스폰합니다.
   HandlerRegistry::Register(kMatchThenSpawnRequest, OnMatchThenSpawnRequest);
+  // 매치메이킹 요청을 취소합니다.
+  HandlerRegistry::Register(kCancelMatchRequest, OnCancelMatchRequest);
+
 }
 
 }  // namespace dsm
