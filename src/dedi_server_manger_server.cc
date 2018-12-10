@@ -75,7 +75,7 @@ class DediServerMangerServer : public Component {
       dsm::DediServerHelper::RegisterHandler();
     } else {
       LOG_ASSERT(FLAGS_app_flavor == "bot");
-      bot::BotClient::Install(4 /* 스레드 개수 */, 1 /* 클라이언트 개수 */);
+      bot::BotClient::Install(4 /* 스레드 개수 */, 2 /* 클라이언트 개수 */);
     }
 
     return true;

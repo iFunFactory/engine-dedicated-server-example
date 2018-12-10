@@ -13,10 +13,15 @@
 
 #include <src/bot/bot_authentication_helper.h>
 #include <src/bot/bot_dedi_server_spawn_helper.h>
+#include <src/bot/bot_matchmaking_helper.h>
 
 DEFINE_string(dsm_server_host, "127.0.0.1",
-              "Dedicated server manager server host");
-DEFINE_uint64(dsm_server_port, 8012, "Dedicated server manager server port");
+              "Dedicated server manager server host.");
+
+DEFINE_uint64(dsm_server_port, 8012, "Dedicated server manager server port.");
+
+DEFINE_bool(use_matchmaking, true,
+            "Use matchmaking feature before spawning a dedicated server.");
 
 //
 // 봇 클라이언트 코드입니다. 서버에서 사용하는 Session 과 비슷한 funtest::Session
@@ -34,6 +39,31 @@ const char *kClientIndex = "index";
 int the_bot_clients = 0;
 
 
+void OnMatchmakingResponseReceived(const bool succeed,
+                                   const Ptr<funtest::Session> &session) {
+  Json &context = session->GetContext();
+  LOG_ASSERT(context.HasAttribute(kClientIndex, Json::kInteger));
+  const int64_t index = context[kClientIndex].GetInteger();
+
+
+  LOG(INFO) << "Received a matchmaking response"
+            << ": session_id=" << session->id()
+            << ", index=" << index
+            << ", spawned=" << succeed;
+
+  if (not succeed) {
+    // 매치메이킹 요청이 실패했습니다.
+    // OnSpawnResponseReceived() 호출 없이 끝나므로
+    // 1. 여기서 재시도 할지,
+    // 2. 사용자에게 실패를 알릴 지 결정해야 합니다.
+  }
+
+  // 매치메이킹 요청에 성공했습니다.
+  // 몇 분 이내로 데디케이티드 서버 스폰 요청이 성공하고
+  // OnSpawnResponseReceived() 를 호출할 것입니다.
+}
+
+
 void OnSpawnResponseReceived(const bool succeed,
                              const Ptr<funtest::Session> &session) {
   Json &context = session->GetContext();
@@ -41,14 +71,16 @@ void OnSpawnResponseReceived(const bool succeed,
   const int64_t index = context[kClientIndex].GetInteger();
 
 
-  LOG(INFO) << "Spawn response received: session_id=" << session->id()
+  LOG(INFO) << "Received a spawn response"
+            << ": session_id=" << session->id()
             << ", index=" << index
             << ", spawned=" << succeed;
 
   if (not succeed) {
     // 데디케이티드 서버 스폰 요청이 실패했습니다.
-    // OnClientRedirection() 호출 없이 끝나므로 여기서 재시도 할지,
-    // 사용자에게 실패를 알릴 지 결정해야 합니다.
+    // OnClientRedirection() 호출 없이 끝나므로
+    // 1. 여기서 재시도 할지,
+    // 2. 사용자에게 실패를 알릴 지 결정해야 합니다.
   }
 
   // 데디케이티드 서버 스폰 요청에 성공했습니다.
@@ -93,8 +125,13 @@ void OnLoginResponseReceived(
     return;
   }
 
-  // 로그인에 성공했습니다. 데디케이티드 서버 요청을 진행합니다.
-  BotDediServerSpawnHelper::Spawn(session);
+  if (not FLAGS_use_matchmaking) {
+    // 로그인에 성공했습니다. 데디케이티드 서버 요청을 진행합니다.
+    BotDediServerSpawnHelper::Spawn(session);
+  } else {
+    // 로그인에 성공했습니다. 매치메이킹 + 데디케이티드 서버 요청을 진행합니다.
+    BotMatchmakingHelper::StartMatchmaking(session);
+  }
 }
 
 
@@ -121,8 +158,15 @@ void BotClient::Install(int threads, int bot_clients) {
   funtest::Network::Install(OnSessionOpened, OnSessionClosed, threads);
 
   BotAuthenticationHelper::Install(OnLoginResponseReceived);
-  BotDediServerSpawnHelper::Install(
-      OnSpawnResponseReceived, OnClientRedirection);
+
+  if (not FLAGS_use_matchmaking) {
+    BotDediServerSpawnHelper::Install(
+        OnSpawnResponseReceived, OnClientRedirection);
+  } else {
+    BotMatchmakingHelper::Install(
+        OnMatchmakingResponseReceived, OnSpawnResponseReceived,
+        OnClientRedirection);
+  }
   the_bot_clients = bot_clients;
 }
 

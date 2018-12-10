@@ -15,6 +15,16 @@ namespace dsm {
 
 namespace {
 
+const char *kBlueTeam = "blue_team";
+
+const char *kRedTeam = "red_team";
+
+
+void SpawnDediServer(const MatchmakingServer::Match &match) {
+  LOG(INFO) << "SpawnDediServer";
+}
+
+
 bool CheckPlayerRequirements(const MatchmakingServer::Player &player,
                              const MatchmakingServer::Match &match) {
   //
@@ -131,20 +141,96 @@ bool CheckPlayerRequirements(const MatchmakingServer::Player &player,
 
 MatchmakingServer::MatchState CheckMatchRequirements(
     const MatchmakingServer::Match &match) {
+  //
+  // 매치 완료 조건 검사 핸들러 함수입니다.
+  //
 
-  return MatchmakingServer::kMatchNeedMorePlayer;
+  size_t total_players_for_match = 0;
+  if (match.type == kMatch1vs1) {
+    total_players_for_match = 2;
+  } else if (match.type == kMatch3v3) {
+    total_players_for_match = 6;
+  } else if (match.type == kMatch6v6) {
+    total_players_for_match = 12;
+  }
+
+  // 위 조건과 다른 매치 타입이 들어올 수 없으므로 이를 검사합니다.
+  LOG_ASSERT(total_players_for_match != 0);
+
+  // 총 플레이어 수가 매치 완료 조건에 부합하는 지 검사합니다.
+  if (match.players.size() != total_players_for_match) {
+    // 아직 더 많은 플레이어가 필요합니다.
+    LOG(INFO) << "Waiting for more players"
+              << ": match_id=" << match.match_id
+              << ", match_type=" << match.type
+              << ", total_players_for_match=" << total_players_for_match
+              << ", current players=" << match.players.size();
+
+    return MatchmakingServer::kMatchNeedMorePlayer;
+  }
+
+  // 매치메이킹이 끝났으니 이 정보를 토대로 데디케이티드 서버 생성을 요청합니다.
+  SpawnDediServer(match);
+
+  return MatchmakingServer::kMatchComplete;
 }
 
 
 void OnPlayerJoined(const MatchmakingServer::Player &player,
-                    const MatchmakingServer::Match *match) {
+                    MatchmakingServer::Match *match) {
+  //
+  // 플레이어를 매치에 포함한 후 호출하는 핸들러 함수 입니다.
+  //
+  // CheckPlayerRequirements() 함수 안에서 true 를 반환하면 이 함수를 호출합니다.
+  //
+  // 이 예제에서는 레드 / 블루로 나눠진 팀에 각각 플레이어를 넣습니다.
+  // 블루 팀 인원수가 레드 팀 인원 수보다 많지 않는 한 레드 팀에 우선적으로
+  // 플레이어를 넣습니다.
 
+  // 매치를 처음 생성할 때는 매치 컨텍스트가 비어있는 상태이므로 초기화가 필요합니다.
+  if (match->context.IsNull()) {
+    match->context.SetObject();
+    match->context[kBlueTeam].SetArray();
+    match->context[kRedTeam].SetArray();
+  }
+
+  if (match->context[kBlueTeam].Size() > match->context[kRedTeam].Size()) {
+    match->context[kRedTeam].PushBack(player.id);
+  } else {
+    match->context[kBlueTeam].PushBack(player.id);
+  }
 }
 
 
 void OnPlayerLeft(const MatchmakingServer::Player &player,
-                  const MatchmakingServer::Match *match) {
+                  MatchmakingServer::Match *match) {
+  LOG_ASSERT(not match->context.IsNull());
+  LOG_ASSERT(match->context[kBlueTeam].IsArray());
+  LOG_ASSERT(match->context[kRedTeam].IsArray());
 
+  {
+    // 매치메이킹 도중 나간 플레이어가 블루 팀에 있는지 확인합니다.
+    Json::ValueIterator itr = match->context[kBlueTeam].Begin();
+    Json::ConstValueIterator itr_end = match->context[kBlueTeam].End();
+    for (; itr != itr_end; ++itr) {
+      if (itr->GetString() == player.id) {
+        itr->RemoveElement(itr);
+        return;
+      }
+    }
+  }
+
+  {
+    // 매치메이킹 도중 나간 플레이어가 레드 팀에 있는지 확인합니다.
+    Json::ValueIterator itr = match->context[kRedTeam].Begin();
+    Json::ConstValueIterator itr_end = match->context[kRedTeam].End();
+    for (; itr != itr_end; ++itr) {
+      if (itr->GetString() == player.id) {
+        itr->RemoveElement(itr);
+        return;
+      }
+    }
+  }
 }
 
 }  // unnamed namespace

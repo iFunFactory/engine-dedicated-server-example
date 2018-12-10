@@ -104,7 +104,10 @@ void OnMatchCompleted(const string &account_id,
             << ", players_ss=" << players_ss.str();
 
   // 매치메이킹에 성공했습니다. 매치메이킹 서버(matchmaking_server_wrapper.cc)에서
-  // 매치에 성공한 사람들을 모아 데디케이티드 서버 생성을 시작할 것입니다.
+  // 매치에 성공한 사람들을 모아 데디케이티드 서버 생성을 시작합니다.
+  // (CheckMatchRequirements 함수에서 kMatchComplete 를 반환한 후입니다)
+  // 이 시점에서는 단순히 클라이언트에게 매치메이킹 완료 메시지만 전달합니다.
+  // (게임 로직에 따라 이 메시지 전송이 불필요할 수 있습니다)
   handler(ResponseResult::OK,
           SessionResponse(session, 200, "OK", Json()));
 }
@@ -165,6 +168,8 @@ void MatchmakingHelper::ProcessMatchmaking(
   //   // 매치 타입, 이 파일에 있는 MatchType 정의 참조
   //   "match_type": 1
   //   "user_data": {
+  //      "level": 70,
+  //      "ranking_score": 1500,
   //      ...
   //   },
   // }
@@ -201,6 +206,7 @@ void MatchmakingHelper::ProcessMatchmaking(
   // 2. 계정(account) ID
   // AccountManager 로 로그인한 계정 ID 를 입력합니다.
   const string &account_id = message[kAccountId].GetString();
+
   // 3. user_data, 매치메이킹 및 생성한 데디케이티드 서버 안에서 사용할
   // 플레이어의 데이터 입니다. 서버는 클라이언트에서 보낸 user_data 를 복사한 후
   // 요청 시간을 추가합니다. 따라서 매치메이킹 시 사용할 데이터는 최종적으로

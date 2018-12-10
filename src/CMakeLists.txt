@@ -27,6 +27,8 @@ set(
   bot/bot_authentication_helper.cc
   bot/bot_dedi_server_spawn_helper.h
   bot/bot_dedi_server_spawn_helper.cc
+  bot/bot_matchmaking_helper.h
+  bot/bot_matchmaking_helper.cc
   ${PROJECT_NAME}_server.cc
 )
 
