@@ -9,10 +9,11 @@
 #include <funapi.h>
 #include <functional>
 
-#include "authentication_helper.h"
-#include "session_response.h"
-#include "dedi_server_helper.h"
-#include "matchmaking_helper.h"
+#include <src/dsm/authentication_helper.h>
+#include <src/dsm/session_response.h>
+#include <src/dsm/dedi_server_helper.h>
+#include <src/dsm/matchmaking_helper.h>
+#include <src/dsm/matchmaking_server_wrapper.h>
 
 
 //
@@ -204,6 +205,17 @@ void RegisterMessageHandler() {
   // 매치메이킹 요청을 취소합니다.
   HandlerRegistry::Register(kCancelMatchRequest, OnCancelMatchRequest);
 
+  // 매치메이킹 후 데디케이티드 서버 생성이 완료된 클라이언트로
+  // 스폰 결과에 대한 응답을 보낼 때 사용합니다.
+  // ( 클라이언트 리다이렉션 메시지는 엔진 내부에서 이 핸들러와 별개로 처리합니다. )
+  SessionResponseHandler response_handler =
+      [](const ResponseResult error, const SessionResponse &response) {
+        LOG_ASSERT(response.session);
+        SendMyMessage(response.session, kMatchThenSpawnRequest,
+                      response.error_code, response.error_message, response.data);
+      };
+
+  MatchmakingServerWrapper::Install(response_handler);
 }
 
 }  // namespace dsm

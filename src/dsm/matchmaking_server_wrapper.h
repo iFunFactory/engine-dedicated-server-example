@@ -16,6 +16,7 @@ namespace dsm {
 
 class MatchmakingServerWrapper {
  public:
+  static void Install(const SessionResponseHandler &response_handler);
   static void Start();
 };
 
