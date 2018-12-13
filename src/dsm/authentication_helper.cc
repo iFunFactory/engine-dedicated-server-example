@@ -250,7 +250,7 @@ void AuthenticationHelper::Login(
 void AuthenticationHelper::Logout(const Ptr<Session> &session) {
 
   const string &account_id = AccountManager::FindLocalAccount(session);
-  if (not account_id.empty()) {
+  if (account_id.empty()) {
     // 이 세션으로 로그인한 적이 없습니다.
     LOG(INFO) << "This session was not used for login"
               << ": session_id=" << session->id();
