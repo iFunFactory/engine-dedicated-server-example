@@ -1,4 +1,4 @@
-// Copyright (C) 2018 iFunFactory Inc. All Rights Reserved.
+// Copyright (C) 2018-2019 iFunFactory Inc. All Rights Reserved.
 //
 // This work is confidential and proprietary to iFunFactory Inc. and
 // must not be used, disclosed, copied, or distributed without the prior
@@ -40,6 +40,8 @@ namespace dsm {
 namespace {
 
 const char *kLoginMessage = "login";
+
+const char *kLogoutMessage = "logout";
 
 const char *kSpawnMessage = "spawn";
 
@@ -84,6 +86,36 @@ void SendMyMessage(const Ptr<Session> &session,
 }
 
 
+void OnLogin(const ResponseResult error, const SessionResponse &response) {
+  // 로그인 이후 처리를 담당합니다.
+  LOG_ASSERT(response.session);
+
+  LOG(INFO) << "OnLogin: session=" << to_string(response.session->id())
+            << ", result=" << (error == ResponseResult::OK ? "ok" : "failed")
+            << ", data=" << response.data.ToString(false);
+
+  SendMyMessage(response.session, kLoginMessage, response.error_code,
+                response.error_message, response.data);
+}
+
+
+void OnLogout(const ResponseResult error,
+              const SessionResponse &response,
+              bool caused_by_session_close) {
+  // 로그아웃 이후 처리를 담당합니다.
+  LOG_ASSERT(response.session);
+
+  LOG(INFO) << "OnLogout: session=" << to_string(response.session->id())
+            << ", result=" << (error == ResponseResult::OK ? "ok" : "failed")
+            << ", caused_by="
+            << (caused_by_session_close ? "session close" : "action")
+            << ", data=" << response.data.ToString(false);
+
+  SendMyMessage(response.session, kLogoutMessage, response.error_code,
+                response.error_message, response.data);
+}
+
+
 void OnSessionOpened(const Ptr<Session> &session) {
   LOG(INFO) << "Session opened: session=" << session->id();
 }
@@ -96,7 +128,8 @@ void OnSessionClosed(const Ptr<Session> &session, SessionCloseReason reason) {
   // 세션 연결이 어떤 이유에서 닫혔습니다. 이 세션이 로그인을 했다면
   // 다음에 다시 로그인할 수 있도록 로그아웃 처리를 해야 합니다.
   // 이후 과정은 authentication_helper.cc 를 참고하세요.
-  AuthenticationHelper::Logout(session);
+  AuthenticationHelper::Logout(session,
+      bind(&OnLogout, _1, _2, true /* caused by session close */));
 }
 
 
@@ -104,20 +137,32 @@ void OnLoginRequest(const Ptr<Session> &session, const Json &message) {
   const SessionId &session_id = session->id();
   const Json &session_context = session->GetContext();
 
-  SessionResponseHandler response_handler =
-      [](const ResponseResult error, const SessionResponse &response) {
-        LOG_ASSERT(response.session);
-        SendMyMessage(response.session, kLoginMessage, response.error_code,
-                      response.error_message, response.data);
-      };
-
   LOG(INFO) << "OnLoginRequest"
             << ": session=" << session_id
             << ", context=" << session_context.ToString(false)
             << ", message=" << message.ToString(false);
 
+  // 로그인을 시도합니다.
+  // OnLogin 함수는 이 세션이 로그인을 성공/실패한 결과를 보낼 때 사용합니다.
+  // OnLogout 함수는 중복 로그인 처리(로그인한 다른 세션을 로그아웃) 시 사용합니다.
   // 이후 과정은 authentication_helper.cc 를 참고하세요.
-  AuthenticationHelper::Login(session, message, response_handler);
+  AuthenticationHelper::Login(session, message, OnLogin,
+      bind(&OnLogout, _1, _2, false /* not caused by session close */));
+}
+
+
+void OnLogoutRequest(const Ptr<Session> &session, const Json &message) {
+  const SessionId &session_id = session->id();
+  const Json &session_context = session->GetContext();
+
+  LOG(INFO) << "OnLogoutRequest"
+            << ": session=" << session_id
+            << ", context=" << session_context.ToString(false)
+            << ", message=" << message.ToString(false);
+
+  // 이후 과정은 authentication_helper.cc 를 참고하세요.
+  AuthenticationHelper::Logout(session,
+      bind(&OnLogout, _1, _2, false /* not caused by session close */));
 }
 
 
@@ -198,6 +243,8 @@ void RegisterMessageHandler() {
   HandlerRegistry::Install2(OnSessionOpened, OnSessionClosed);
   // 로그인 요청 핸들러를 등록합니다.
   HandlerRegistry::Register(kLoginMessage, OnLoginRequest);
+  // 로그아웃 요청 핸들러를 등록합니다
+  HandlerRegistry::Register(kLogoutMessage, OnLogoutRequest);
   // 데디케이티드 서버 스폰(Spawn) 요청 핸들러를 등록합니다.
   HandlerRegistry::Register(kSpawnMessage, OnSpawnRequest);
   // 매치메이킹 후 매치가 성사된 유저들을 모아 데디케이티드 서버를 스폰합니다.
@@ -212,7 +259,8 @@ void RegisterMessageHandler() {
       [](const ResponseResult error, const SessionResponse &response) {
         LOG_ASSERT(response.session);
         SendMyMessage(response.session, kMatchThenSpawnMessage,
-                      response.error_code, response.error_message, response.data);
+                      response.error_code, response.error_message,
+                      response.data);
       };
 
   MatchmakingServerWrapper::Install(response_handler);

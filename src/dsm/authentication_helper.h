@@ -17,9 +17,11 @@ class AuthenticationHelper {
  public:
   static void Login(const Ptr<Session> &session,
                     const Json &message,
-                    const SessionResponseHandler &handler);
+                    const SessionResponseHandler &login_handler,
+                    const SessionResponseHandler &logout_handler);
 
-  static void Logout(const Ptr<Session> &session);
+  static void Logout(const Ptr<Session> &session,
+                     const SessionResponseHandler &logout_handler);
 };
 
 }  // namespace dsm

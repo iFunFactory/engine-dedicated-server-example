@@ -50,7 +50,11 @@ void OnLoggedIn(const string &account_id,
                 bool logged_in,
                 const string &platform,
                 size_t try_count,
-                const SessionResponseHandler &handler) {
+                const SessionResponseHandler &login_handler,
+                const SessionResponseHandler &logout_handler) {
+  LOG_ASSERT(login_handler);
+  LOG_ASSERT(logout_handler);
+
   if (not logged_in) {
     if (try_count == 0) {
       // 로그인에 실패했습니다. 누군가 먼저 로그인 하거나, 시스템 장애일 수 있습니다.
@@ -62,16 +66,28 @@ void OnLoggedIn(const string &account_id,
                 << ", try_count=" << try_count;
 
       AccountManager::LogoutCallback on_logged_out =
-          [platform, try_count, handler](const string &account_id,
-                                         const Ptr<Session> &session,
-                                         bool logged_out) {
-            // logged_out=false 라면 다른 곳에서 로그아웃을 한 경우입니다.
+          [session, platform, try_count, login_handler, logout_handler](
+              const string &account_id,
+              const Ptr<Session> &session_logged_out,
+              bool logged_out) {
+            // 이 시점(중복 로그인 문제로 로그아웃을 실행한 결과)에서
+            // logged_out=false 면 이 함수를 실행하는 사이 다른 곳에서
+            // 로그아웃 했거나 RPC 시스템 에러일 가능성이 있습니다.
+            // 일반적인 경우에 대해서는 OnLoggedOut 함수를 참고해주세요.
 
             // 로그아웃 후 어떻게 처리할지 결정합니다.
             // 이 예제에서는 별다른 처리 없이 다시 로그인을 시도합니다.
             AccountManager::CheckAndSetLoggedInAsync(
                 account_id, session,
-                bind(&OnLoggedIn, _1, _2, _3, platform, try_count, handler));
+                bind(&OnLoggedIn, _1, _2, _3, platform, try_count,
+                     login_handler, logout_handler));
+
+            // 기존 세션에 로그아웃 메시지를 보냅니다.
+            if (logged_out && session_logged_out) {
+              logout_handler(ResponseResult::OK,
+                  SessionResponse(session_logged_out, 200, "Duplicated login",
+                                  Json()));
+            }
           };
 
       // 분산 환경이라면 SetLoggedOutGlobalAsync() 함수를 사용해주세요.
@@ -88,8 +104,8 @@ void OnLoggedIn(const string &account_id,
                  << ", account_id=" << account_id
                  << ", platform=" << platform
                  << ", try_count=" << try_count;
-      handler(ResponseResult::FAILED,
-              SessionResponse(session, 500, "Internal server error.", Json()));
+      login_handler(ResponseResult::FAILED,
+          SessionResponse(session, 500, "Internal server error.", Json()));
       return;
     }
   }  // if (not logged_in)
@@ -102,7 +118,7 @@ void OnLoggedIn(const string &account_id,
             << ", try_count=" << try_count;
 
   // 동시에 두 스레드에서 접근하지 못하게 세션 ID 로 직렬화 한 이벤트 위에서 제거합니다.
-  Event::Invoke([handler, session, platform](){
+  Event::Invoke([session, platform, login_handler](){
     // 이 정보는 서버에서 세션을 관리하기 위한 용도로만 사용하며 클라이언트로
     // 보내지 않습니다. account_id 는 AccountManager::FindLocalAccount() 함수로
     // 가져올 수 있으므로 포함하지 않습니다.
@@ -114,18 +130,24 @@ void OnLoggedIn(const string &account_id,
     response_data["key2"] = "value2";
     response_data["key3"] = "value3";
 
-    handler(ResponseResult::OK,
-            SessionResponse(session, 200, "OK", response_data));
+    login_handler(ResponseResult::OK,
+        SessionResponse(session, 200, "OK", response_data));
   }, session->id());
 }
 
 
 void OnLoggedOut(const string &account_id,
                  const Ptr<Session> &session,
-                 bool logged_out) {
+                 bool logged_out,
+                 const SessionResponseHandler &logout_handler) {
+  LOG_ASSERT(logout_handler);
+
   if (not logged_out) {
+    // logged_out=false 면 로그아웃하지 않은 사용자가 로그아웃을 시도한 경우입니다.
     LOG(INFO) << "Not logged in: session_id=" << session->id()
               << ", account_id=" << account_id;
+    logout_handler(ResponseResult::FAILED,
+        SessionResponse(session, 400, "The user did not login.", Json()));
     return;
   }
 
@@ -141,8 +163,10 @@ void OnLoggedOut(const string &account_id,
             << ", platform=" << platform;
 
   // 동시에 두 스레드에서 접근하지 못하게 세션 ID 로 직렬화 한 이벤트 위에서 제거합니다.
-  Event::Invoke([session]() {
+  Event::Invoke([session, logout_handler]() {
     ClearLogInContext(session);
+    logout_handler(ResponseResult::OK,
+        SessionResponse(session, 200, "OK", Json()));
   }, session->id());
 }
 
@@ -152,9 +176,11 @@ void OnLoggedOut(const string &account_id,
 void AuthenticationHelper::Login(
     const Ptr<Session> &session,
     const Json &message,
-    const SessionResponseHandler &handler) {
+    const SessionResponseHandler &login_handler,
+    const SessionResponseHandler &logout_handler) {
   LOG_ASSERT(session);
-  LOG_ASSERT(handler);
+  LOG_ASSERT(login_handler);
+  LOG_ASSERT(logout_handler);
 
   //
   // 로그인 요청 예제
@@ -174,8 +200,8 @@ void AuthenticationHelper::Login(
                << kPlatformName << "'"
                << ": session=" << session->id()
                << ", message=" << message.ToString(false);
-    handler(ResponseResult::FAILED,
-            SessionResponse(session, 400, "Missing required fields.", Json()));
+    login_handler(ResponseResult::FAILED,
+        SessionResponse(session, 400, "Missing required fields.", Json()));
     return;
   }
 
@@ -188,8 +214,8 @@ void AuthenticationHelper::Login(
       LOG(ERROR) << "The message does not have '" << kPlatformAccessToken
                  << ": session=" << session->id()
                  << ", message=" << message.ToString(false);
-      handler(ResponseResult::FAILED,
-              SessionResponse(session, 400, "Missing required fields.", Json()));
+      login_handler(ResponseResult::FAILED,
+          SessionResponse(session, 400, "Missing required fields.", Json()));
       return;
     }
 
@@ -197,7 +223,7 @@ void AuthenticationHelper::Login(
     FacebookAuthenticationRequest request(access_token);
 
     FacebookAuthenticationResponseHandler on_authenticated =
-        [session, account_id, platform, handler](
+        [session, account_id, platform, login_handler, logout_handler](
             const FacebookAuthenticationRequest &request,
             const FacebookAuthenticationResponse &response,
             bool error) {
@@ -210,9 +236,9 @@ void AuthenticationHelper::Login(
                          << ": session=" << session->id()
                          << ", code=" << response.error.code
                          << ", message=" << response.error.message;
-            handler(ResponseResult::FAILED,
-                    SessionResponse(session, 400, "Missing required fields.",
-                                    Json()));
+            login_handler(ResponseResult::FAILED,
+                SessionResponse(session, 400, "Missing required fields.",
+                                Json()));
             return;
           }
 
@@ -226,7 +252,8 @@ void AuthenticationHelper::Login(
           // 분산 환경이라면 CheckAndSetLoggedInGlobalAsync() 함수를 사용해주세요.
           AccountManager::CheckAndSetLoggedInAsync(
               account_id, session,
-              bind(&OnLoggedIn, _1, _2, _3, platform, try_count, handler));
+              bind(&OnLoggedIn, _1, _2, _3, platform, try_count,
+                   login_handler, logout_handler));
         };
 
     // Facebook 인증을 요청합니다.
@@ -242,12 +269,15 @@ void AuthenticationHelper::Login(
     // 분산 환경이라면 CheckAndSetLoggedInGlobalAsync() 함수를 사용해주세요.
     AccountManager::CheckAndSetLoggedInAsync(
         account_id, session,
-        bind(&OnLoggedIn, _1, _2, _3, platform, try_count, handler));
+        bind(&OnLoggedIn, _1, _2, _3, platform, try_count,
+             login_handler, logout_handler));
   }
 }
 
 
-void AuthenticationHelper::Logout(const Ptr<Session> &session) {
+void AuthenticationHelper::Logout(
+    const Ptr<Session> &session,
+    const SessionResponseHandler &logout_handler) {
 
   const string &account_id = AccountManager::FindLocalAccount(session);
   if (account_id.empty()) {
@@ -258,7 +288,8 @@ void AuthenticationHelper::Logout(const Ptr<Session> &session) {
   }
 
   // 분산 환경이라면 SetLoggedOutGlobalAsync() 함수를 사용해주세요.
-  AccountManager::SetLoggedOutAsync(account_id, OnLoggedOut);
+  AccountManager::SetLoggedOutAsync(account_id,
+      bind(&OnLoggedOut, _1, _2, _3, logout_handler));
 }
 
 }  // namespace dsm
