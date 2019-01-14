@@ -4,7 +4,7 @@
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
-#include "bot_client.h"
+#include "simple_bot_client.h"
 
 #include <funapi.h>
 #include <funapi/test/network.h>
@@ -153,7 +153,7 @@ void OnSessionClosed(const Ptr<funtest::Session> &session,
 }  // unnamed namespace
 
 
-void BotClient::Install(int threads, int bot_clients) {
+void SimpleBotClient::Install(int threads, int bot_clients) {
   // 봇 클라이언트의 세션 핸들러를 등록합니다.
   funtest::Network::Install(OnSessionOpened, OnSessionClosed, threads);
 
@@ -171,12 +171,12 @@ void BotClient::Install(int threads, int bot_clients) {
 }
 
 
-void BotClient::Uninstall() {
+void SimpleBotClient::Uninstall() {
   the_bot_clients = 0;
 }
 
 
-void BotClient::Start() {
+void SimpleBotClient::Start() {
   LOG_ASSERT(the_bot_clients != 0);
 
   for (int index = 0; index < the_bot_clients; ++index) {

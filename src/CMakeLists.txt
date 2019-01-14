@@ -21,8 +21,8 @@ set(
   dsm/matchmaking_server_wrapper.cc
   dsm/matchmaking_helper.h
   dsm/matchmaking_helper.cc
-  bot/bot_client.h
-  bot/bot_client.cc
+  bot/simple_bot_client.h
+  bot/simple_bot_client.cc
   bot/bot_authentication_helper.h
   bot/bot_authentication_helper.cc
   bot/bot_dedi_server_spawn_helper.h

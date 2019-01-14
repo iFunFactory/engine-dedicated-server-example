@@ -10,7 +10,7 @@
 
 #include <src/dedi_server_manger_object.h>
 
-#include <src/bot/bot_client.h>
+#include <src/bot/simple_bot_client.h>
 #include <src/dsm/dedi_server_helper.h>
 #include <src/dsm/matchmaking_server_wrapper.h>
 #include <src/dsm/message_handler.h>
@@ -75,7 +75,7 @@ class DediServerMangerServer : public Component {
       dsm::DediServerHelper::RegisterHandler();
     } else {
       LOG_ASSERT(FLAGS_app_flavor == "bot");
-      bot::BotClient::Install(4 /* 스레드 개수 */, 2 /* 클라이언트 개수 */);
+      bot::SimpleBotClient::Install(4 /* 스레드 개수 */, 2 /* 클라이언트 개수 */);
     }
 
     return true;
@@ -95,7 +95,7 @@ class DediServerMangerServer : public Component {
     } else {
       LOG_ASSERT(FLAGS_app_flavor == "bot");
       // 봇 클라이언트를 실행합니다.
-      bot::BotClient::Start();
+      bot::SimpleBotClient::Start();
     }
 
     return true;
@@ -115,7 +115,7 @@ class DediServerMangerServer : public Component {
     } else {
       LOG_ASSERT(FLAGS_app_flavor == "bot");
       // 봇 클라이언트 실행을 종료합니다.
-      bot::BotClient::Uninstall();
+      bot::SimpleBotClient::Uninstall();
     }
 
     return true;

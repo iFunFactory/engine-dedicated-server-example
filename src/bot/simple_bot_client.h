@@ -12,7 +12,7 @@
 
 namespace bot {
 
-class BotClient {
+class SimpleBotClient {
  public:
   static void Install(int threads, int bot_clients);
   static void Uninstall();
