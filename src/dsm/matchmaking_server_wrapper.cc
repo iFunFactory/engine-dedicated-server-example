@@ -1,4 +1,4 @@
-// Copyright (C) 2018 iFunFactory Inc. All Rights Reserved.
+// Copyright (C) 2018-2019 iFunFactory Inc. All Rights Reserved.
 //
 // This work is confidential and proprietary to iFunFactory Inc. and
 // must not be used, disclosed, copied, or distributed without the prior
@@ -59,10 +59,7 @@ void OnDedicatedServerSpawned(const Uuid &match_id,
     // 있을 경우, 이 곳에서 처리해야 합니다.
     const Ptr<Session> &session = AccountManager::FindLocalSession(account_id);
     if (not session) {  // session = Session::kNullPtr
-      // 다른 곳 또는 사용자가 세션을 닫아 로그아웃 한 상태입니다.
-      the_response_handler(ResponseResult::FAILED,
-          SessionResponse(Session::kNullPtr, 500,
-              "Internal server error.", Json()));
+      // 다른 곳 또는 사용자가 세션을 닫거나 로그아웃 한 상태입니다.
       return;
     }
 
@@ -80,7 +77,7 @@ void OnDedicatedServerSpawned(const Uuid &match_id,
 
     the_response_handler(ResponseResult::OK,
            SessionResponse(session, 200, "OK", response_data));
-  }
+  }  // for (const auto &account_id : account_ids)
 }
 
 
