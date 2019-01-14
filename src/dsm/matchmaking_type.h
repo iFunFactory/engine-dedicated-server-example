@@ -1,12 +1,12 @@
-// Copyright (C) 2018 iFunFactory Inc. All Rights Reserved.
+// Copyright (C) 2018-2019 iFunFactory Inc. All Rights Reserved.
 //
 // This work is confidential and proprietary to iFunFactory Inc. and
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
 
-#ifndef DEDI_SERVER_EXAMPLE_ENGINE_SRC_DSM_MATCHMAKING_SERVER_TYPE_H_
-#define DEDI_SERVER_EXAMPLE_ENGINE_SRC_DSM_MATCHMAKING_SERVER_TYPE_H_
+#ifndef SRC_DSM_MATCHMAKING_TYPE_H_
+#define SRC_DSM_MATCHMAKING_TYPE_H_
 
 #include <funapi.h>
 
@@ -35,4 +35,4 @@ extern const char *kMatchLevel;
 extern const char *kRankingScore;
 }
 
-#endif // DEDI_SERVER_EXAMPLE_ENGINE_SRC_DSM_MATCHMAKING_SERVER_TYPE_H_
+#endif  // SRC_DSM_MATCHMAKING_TYPE_H_

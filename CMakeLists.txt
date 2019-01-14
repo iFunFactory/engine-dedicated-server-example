@@ -1,4 +1,4 @@
-# Copyright (C) 2013-2018 iFunFactory Inc. All Rights Reserved.
+# Copyright (C) 2013-2019 iFunFactory Inc. All Rights Reserved.
 #
 # This work is confidential and proprietary to iFunFactory Inc. and
 # must not be used, disclosed, copied, or distributed without the prior
@@ -16,6 +16,8 @@ cmake_minimum_required(VERSION 2.6)
 ###############################################################################
 # Environment setting
 ###############################################################################
+
+ENABLE_TESTING()
 
 # Sets cmake PROJECT_NAME var before importing Funapi.cmake.
 # Enables only C/C++.

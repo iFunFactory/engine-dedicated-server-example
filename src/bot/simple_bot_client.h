@@ -1,11 +1,11 @@
-// Copyright (C) 2018 iFunFactory Inc. All Rights Reserved.
+// Copyright (C) 2018-2019 iFunFactory Inc. All Rights Reserved.
 //
 // This work is confidential and proprietary to iFunFactory Inc. and
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
-#ifndef DEDI_SERVER_EXAMPLE_ENGINE_SRC_BOT_BOT_CLIENT_H_
-#define DEDI_SERVER_EXAMPLE_ENGINE_SRC_BOT_BOT_CLIENT_H_
+#ifndef SRC_BOT_SIMPLE_BOT_CLIENT_H_
+#define SRC_BOT_SIMPLE_BOT_CLIENT_H_
 
 #include <funapi.h>
 
@@ -23,4 +23,4 @@ class SimpleBotClient {
 }  // namespace bot
 
 
-#endif  // DEDI_SERVER_EXAMPLE_ENGINE_SRC_BOT_BOT_CLIENT_H_
+#endif  // SRC_BOT_SIMPLE_BOT_CLIENT_H_

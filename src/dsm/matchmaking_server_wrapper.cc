@@ -54,7 +54,7 @@ void OnDedicatedServerSpawned(const Uuid &match_id,
             << ": match_id=" << match_id
             << ", success=" << (success ? "succeed" : "failed");
 
-  for (const auto &account_id : account_ids) {
+  for (auto &account_id : account_ids) {
     // 각 클라이언트가 데디케이티드 서버로 접속하기 전에 처리해야 할 것이
     // 있을 경우, 이 곳에서 처리해야 합니다.
     const Ptr<Session> &session = AccountManager::FindLocalSession(account_id);
@@ -209,7 +209,7 @@ bool CheckPlayerRequirements(const MatchmakingServer::Player &player,
 
   const std::vector<MatchmakingClient::Player> &players = match.players;
 
-  LOG(INFO) << "Checking the first triger...";
+  LOG(INFO) << "Checking the first condition.";
 
   // 조건 1. 매치 상대가 없으면 (자신만 있다면) 바로 매치에 참여합니다.
   if (players.size() == 1) {
@@ -220,11 +220,11 @@ bool CheckPlayerRequirements(const MatchmakingServer::Player &player,
     return true;
   }
 
-  LOG(INFO) << "Checking the second trigger...";
+  LOG(INFO) << "Checking the second condition.";
 
   // 조건 2. 매치메이킹에 참여중인 플레이어 중 1명이 30초 이상 기다린 경우 바로 넣습니다.
   auto itr = players.begin();
-  const auto itr_end = players.end();
+  auto itr_end = players.end();
   for (; itr != itr_end; ++itr) {
     if (itr->id == account_id) {
       // 조건을 검사할 때 나 자신은 제외합니다.
@@ -242,7 +242,7 @@ bool CheckPlayerRequirements(const MatchmakingServer::Player &player,
     }
   }
 
-  LOG(INFO) << "Checking the third trigger...";
+  LOG(INFO) << "Checking the third condition.";
 
   // 조건 3. 평균 레벨 차가 10 이상이거나, 랭킹 점수 차가 100점 이상인 경우
   // 매치에 참여시키지 않습니다.

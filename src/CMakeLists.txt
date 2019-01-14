@@ -8,28 +8,28 @@
 # NOTE: IF YOU HAVE MORE SOURCE FILES, ADD HERE.
 set(
   ADDITIONAL_CPP_SOURCES
-  dsm/session_response.h
-  dsm/message_handler.h
-  dsm/message_handler.cc
-  dsm/authentication_helper.h
-  dsm/authentication_helper.cc
-  dsm/dedi_server_helper.h
-  dsm/dedi_server_helper.cc
-  dsm/matchmaking_type.h
-  dsm/matchmaking_type.cc
-  dsm/matchmaking_server_wrapper.h
-  dsm/matchmaking_server_wrapper.cc
-  dsm/matchmaking_helper.h
-  dsm/matchmaking_helper.cc
-  bot/simple_bot_client.h
-  bot/simple_bot_client.cc
-  bot/bot_authentication_helper.h
-  bot/bot_authentication_helper.cc
-  bot/bot_dedi_server_spawn_helper.h
-  bot/bot_dedi_server_spawn_helper.cc
-  bot/bot_matchmaking_helper.h
-  bot/bot_matchmaking_helper.cc
-  ${PROJECT_NAME}_server.cc
+  ${CMAKE_SOURCE_DIR}/src/dsm/session_response.h
+  ${CMAKE_SOURCE_DIR}/src/dsm/message_handler.h
+  ${CMAKE_SOURCE_DIR}/src/dsm/message_handler.cc
+  ${CMAKE_SOURCE_DIR}/src/dsm/authentication_helper.h
+  ${CMAKE_SOURCE_DIR}/src/dsm/authentication_helper.cc
+  ${CMAKE_SOURCE_DIR}/src/dsm/dedi_server_helper.h
+  ${CMAKE_SOURCE_DIR}/src/dsm/dedi_server_helper.cc
+  ${CMAKE_SOURCE_DIR}/src/dsm/matchmaking_type.h
+  ${CMAKE_SOURCE_DIR}/src/dsm/matchmaking_type.cc
+  ${CMAKE_SOURCE_DIR}/src/dsm/matchmaking_server_wrapper.h
+  ${CMAKE_SOURCE_DIR}/src/dsm/matchmaking_server_wrapper.cc
+  ${CMAKE_SOURCE_DIR}/src/dsm/matchmaking_helper.h
+  ${CMAKE_SOURCE_DIR}/src/dsm/matchmaking_helper.cc
+  ${CMAKE_SOURCE_DIR}/src/bot/simple_bot_client.h
+  ${CMAKE_SOURCE_DIR}/src/bot/simple_bot_client.cc
+  ${CMAKE_SOURCE_DIR}/src/bot/bot_authentication_helper.h
+  ${CMAKE_SOURCE_DIR}/src/bot/bot_authentication_helper.cc
+  ${CMAKE_SOURCE_DIR}/src/bot/bot_dedi_server_spawn_helper.h
+  ${CMAKE_SOURCE_DIR}/src/bot/bot_dedi_server_spawn_helper.cc
+  ${CMAKE_SOURCE_DIR}/src/bot/bot_matchmaking_helper.h
+  ${CMAKE_SOURCE_DIR}/src/bot/bot_matchmaking_helper.cc
+  ${CMAKE_SOURCE_DIR}/src/${PROJECT_NAME}_server.cc
 )
 
 set(
@@ -51,20 +51,9 @@ set(
 set(CMAKE_MODULE_PATH "/usr/share/funapi/cmake")
 include(Funapi-src)
 
-###############################################################################
-# ${PROJECT_NAME} and TARGET rules are available after above inclusion.
-# For example, you may want to use predefined macros for your project.
-# With 'set_property' command, you can define multiple flags in your code.
-#
-# **PLEASE NOTE**: flags must have whitespace around both sides
-# set_property(... " -DMY_FLAG1 -DMY_FLAG2 ") : OK.
-# set_property(... "-DMY_FLAG1 -DMY_FLAG2") : No, it doesn't work.
-#
-# You can check the flag in your .cc/.h file with the followings:
-# #ifdef MY_FLAG1
-#    // Do whatever you want
-# #endif
-###############################################################################
-#if (CMAKE_BUILD_TYPE MATCHES Debug) # for debug build only
-#    set_property(TARGET ${PROJECT_NAME} APPEND_STRING PROPERTY COMPILE_FLAGS " -DMY_FLAG1 -DMY_FLAG2 ")
-#endif()
+# cpplint 테스트를 설정합니다.
+find_program(CPPLINT cpplint.py HINTS ${CMAKE_SOURCE_DIR}/tools)
+if (NOT CPPLINT)
+    message(FATAL_ERROR "cpplint.py is required.")
+endif ()
+add_test(cpplint ${CPPLINT} --verbose=5 ${ADDITIONAL_CPP_SOURCES})

@@ -4,8 +4,8 @@
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
-#ifndef DEDI_SERVER_EXAMPLE_ENGINE_SRC_BOT_DEDI_SPAWN_HELPER_H_
-#define DEDI_SERVER_EXAMPLE_ENGINE_SRC_BOT_DEDI_SPAWN_HELPER_H_
+#ifndef SRC_BOT_BOT_DEDI_SERVER_SPAWN_HELPER_H_
+#define SRC_BOT_BOT_DEDI_SERVER_SPAWN_HELPER_H_
 
 #include <funapi.h>
 #include <funapi/test/network.h>
@@ -33,4 +33,4 @@ class BotDediServerSpawnHelper {
 
 }  // namespace bot
 
-#endif  // DEDI_SERVER_EXAMPLE_ENGINE_SRC_BOT_DEDI_SPAWN_HELPER_H_
+#endif  // SRC_BOT_BOT_DEDI_SERVER_SPAWN_HELPER_H_

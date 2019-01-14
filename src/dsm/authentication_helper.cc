@@ -1,4 +1,4 @@
-// Copyright (C) 2018 iFunFactory Inc. All Rights Reserved.
+// Copyright (C) 2018-2019 iFunFactory Inc. All Rights Reserved.
 //
 // This work is confidential and proprietary to iFunFactory Inc. and
 // must not be used, disclosed, copied, or distributed without the prior
@@ -118,7 +118,7 @@ void OnLoggedIn(const string &account_id,
             << ", try_count=" << try_count;
 
   // 동시에 두 스레드에서 접근하지 못하게 세션 ID 로 직렬화 한 이벤트 위에서 제거합니다.
-  Event::Invoke([session, platform, login_handler](){
+  Event::Invoke([session, platform, login_handler]() {
     // 이 정보는 서버에서 세션을 관리하기 위한 용도로만 사용하며 클라이언트로
     // 보내지 않습니다. account_id 는 AccountManager::FindLocalAccount() 함수로
     // 가져올 수 있으므로 포함하지 않습니다.

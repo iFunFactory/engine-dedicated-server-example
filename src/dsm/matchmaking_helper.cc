@@ -1,4 +1,4 @@
-// Copyright (C) 2018 iFunFactory Inc. All Rights Reserved.
+// Copyright (C) 2018-2019 iFunFactory Inc. All Rights Reserved.
 //
 // This work is confidential and proprietary to iFunFactory Inc. and
 // must not be used, disclosed, copied, or distributed without the prior
@@ -88,7 +88,7 @@ void OnMatchCompleted(const string &account_id,
   std::stringstream players_ss;
   players_ss << "[";
   auto itr = players.begin();
-  const auto itr_end = players.end();
+  auto itr_end = players.end();
   for (; itr != itr_end; ++itr) {
     if (itr != players.begin()) {
       players_ss << ", ";
@@ -134,9 +134,9 @@ void OnMatchProgressUpdated(const string &account_id,
 
   ss << "---------------------------------";
   auto itr = players.begin();
-  const auto itr_end = players.end();
+  auto itr_end = players.end();
 
-  for(; itr != itr_end; ++itr) {
+  for (; itr != itr_end; ++itr) {
     if (itr != match.players.begin()) {
       ss << ", ";
     }
