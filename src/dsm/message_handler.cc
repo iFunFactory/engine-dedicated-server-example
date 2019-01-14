@@ -21,7 +21,7 @@
 //
 // 이 파일은 클라이언트로부터 오는 모든 요청을 처리하는 곳입니다.
 //
-// RegisterMessageHandler() 안에서 등록한 메시지 타입(kLoginRequest 등)과
+// RegisterMessageHandler() 안에서 등록한 메시지 타입(kLoginMessage 등)과
 // 일치하는 요청이 왔을 때 이 곳에서 처리할 수 있습니다.
 // 만약 등록하지 않은 메시지 타입으로 요청이 올 경우 엔진 내부적으로 에러 메시지를
 // 출력합니다.
@@ -39,13 +39,13 @@ namespace dsm {
 
 namespace {
 
-const char *kLoginRequest = "login";
+const char *kLoginMessage = "login";
 
-const char *kSpawnRequest = "spawn";
+const char *kSpawnMessage = "spawn";
 
-const char *kMatchThenSpawnRequest = "match";
+const char *kMatchThenSpawnMessage = "match";
 
-const char *kCancelMatchRequest = "cancel_match";
+const char *kCancelMatchMessage = "cancel_match";
 
 
 void SendMyMessage(const Ptr<Session> &session,
@@ -107,7 +107,7 @@ void OnLoginRequest(const Ptr<Session> &session, const Json &message) {
   SessionResponseHandler response_handler =
       [](const ResponseResult error, const SessionResponse &response) {
         LOG_ASSERT(response.session);
-        SendMyMessage(response.session, kLoginRequest, response.error_code,
+        SendMyMessage(response.session, kLoginMessage, response.error_code,
                       response.error_message, response.data);
       };
 
@@ -134,7 +134,7 @@ void OnSpawnRequest(const Ptr<Session> &session, const Json &message) {
           return;
         }
 
-        SendMyMessage(response.session, kSpawnRequest, response.error_code,
+        SendMyMessage(response.session, kSpawnMessage, response.error_code,
                       response.error_message, response.data);
       };
 
@@ -160,7 +160,7 @@ void OnMatchThenSpawnRequest(const Ptr<Session> &session, const Json &message) {
   SessionResponseHandler response_handler =
       [](const ResponseResult error, const SessionResponse &response) {
         LOG_ASSERT(response.session);
-        SendMyMessage(response.session, kMatchThenSpawnRequest,
+        SendMyMessage(response.session, kMatchThenSpawnMessage,
                       response.error_code, response.error_message,
                       response.data);
       };
@@ -182,7 +182,7 @@ void OnCancelMatchRequest(const Ptr<Session> &session, const Json &message) {
   SessionResponseHandler response_handler =
       [](const ResponseResult error, const SessionResponse &response) {
         LOG_ASSERT(response.session);
-        SendMyMessage(response.session, kCancelMatchRequest, response.error_code,
+        SendMyMessage(response.session, kCancelMatchMessage, response.error_code,
                       response.error_message, response.data);
       };
 
@@ -197,13 +197,13 @@ void RegisterMessageHandler() {
   // 세션 열림 및 닫힘 핸들러를 등록합니다.
   HandlerRegistry::Install2(OnSessionOpened, OnSessionClosed);
   // 로그인 요청 핸들러를 등록합니다.
-  HandlerRegistry::Register(kLoginRequest, OnLoginRequest);
+  HandlerRegistry::Register(kLoginMessage, OnLoginRequest);
   // 데디케이티드 서버 스폰(Spawn) 요청 핸들러를 등록합니다.
-  HandlerRegistry::Register(kSpawnRequest, OnSpawnRequest);
+  HandlerRegistry::Register(kSpawnMessage, OnSpawnRequest);
   // 매치메이킹 후 매치가 성사된 유저들을 모아 데디케이티드 서버를 스폰합니다.
-  HandlerRegistry::Register(kMatchThenSpawnRequest, OnMatchThenSpawnRequest);
+  HandlerRegistry::Register(kMatchThenSpawnMessage, OnMatchThenSpawnRequest);
   // 매치메이킹 요청을 취소합니다.
-  HandlerRegistry::Register(kCancelMatchRequest, OnCancelMatchRequest);
+  HandlerRegistry::Register(kCancelMatchMessage, OnCancelMatchRequest);
 
   // 매치메이킹 후 데디케이티드 서버 생성이 완료된 클라이언트로
   // 스폰 결과에 대한 응답을 보낼 때 사용합니다.
@@ -211,7 +211,7 @@ void RegisterMessageHandler() {
   SessionResponseHandler response_handler =
       [](const ResponseResult error, const SessionResponse &response) {
         LOG_ASSERT(response.session);
-        SendMyMessage(response.session, kMatchThenSpawnRequest,
+        SendMyMessage(response.session, kMatchThenSpawnMessage,
                       response.error_code, response.error_message, response.data);
       };
 
