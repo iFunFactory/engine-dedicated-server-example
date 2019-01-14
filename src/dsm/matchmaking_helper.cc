@@ -207,6 +207,18 @@ void MatchmakingHelper::ProcessMatchmaking(
   // AccountManager 로 로그인한 계정 ID 를 입력합니다.
   const string &account_id = message[kAccountId].GetString();
 
+  // 요청한 계정과 로그인 중인 세션이 일치하는 지 검사합니다.
+  // 이 검사를 통해 다른 유저 ID 로 매칭 요청하는 것을 방지할 수 있습니다.
+  if (AccountManager::FindLocalSession(account_id)->id() != session->id()) {
+    LOG(INFO) << "ProcessMatchmaking denied: bad request"
+              << ": session_id=" << session->id()
+              << ", message=" << message.ToString(false);
+    handler(ResponseResult::FAILED,
+            SessionResponse(session, 400,
+                            "Access denied for this account.", Json()));
+    return;
+  }
+
   // 3. user_data, 매치메이킹 및 생성한 데디케이티드 서버 안에서 사용할
   // 플레이어의 데이터 입니다. 서버는 클라이언트에서 보낸 user_data 를 복사한 후
   // 요청 시간을 추가합니다. 따라서 매치메이킹 시 사용할 데이터는 최종적으로
@@ -286,7 +298,20 @@ void MatchmakingHelper::CancelMatchmaking(
     return;
   }
 
+  // 계정
   const string &account_id = message[kAccountId].GetString();
+
+  // 요청한 계정과 로그인 중인 세션이 일치하는 지 검사합니다.
+  // 이 검사를 통해 다른 유저 ID 로 매칭을 취소하는 행위를 방지할 수 있습니다.
+  if (AccountManager::FindLocalSession(account_id)->id() != session->id()) {
+    LOG(INFO) << "CancelMatchmaking denied: bad request"
+              << ": session_id=" << session->id()
+              << ", message=" << message.ToString(false);
+    handler(ResponseResult::FAILED,
+            SessionResponse(session, 400,
+                            "Access denied for this account.", Json()));
+    return;
+  }
 
   MatchmakingClient::CancelCallback cancel_callback =
       [session, handler](const string &account_id,
