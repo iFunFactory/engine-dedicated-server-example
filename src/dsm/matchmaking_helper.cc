@@ -409,8 +409,8 @@ void MatchmakingHelper::CancelMatchmaking(const Ptr<Session> &session) {
     return;
   }
 
-  LOG_ASSERT(context[kMatchHistory].HasAttribute(kAccountId, Json::kObject));
-  LOG_ASSERT(context[kMatchHistory].HasAttribute(kMatchType, Json::kObject));
+  LOG_ASSERT(context[kMatchHistory].HasAttribute(kAccountId, Json::kString));
+  LOG_ASSERT(context[kMatchHistory].HasAttribute(kMatchType, Json::kInteger));
 
   const string &account_id = context[kMatchHistory][kAccountId].GetString();
   const int64_t match_type = context[kMatchHistory][kMatchType].GetInteger();
