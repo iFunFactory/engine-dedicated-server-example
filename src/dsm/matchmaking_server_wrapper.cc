@@ -339,6 +339,10 @@ void OnPlayerJoined(const MatchmakingServer::Player &player,
     match->context[kRedTeam].SetArray();
   }
 
+  LOG(INFO) << "OnPlayerJoined: player=" << player.id
+            << ", user_data=" << player.context.ToString(false)
+            << ", match_data=" << match->context.ToString(false);
+
   if (match->context[kBlueTeam].Size() > match->context[kRedTeam].Size()) {
     match->context[kRedTeam].PushBack(player.id);
   } else {
@@ -353,13 +357,17 @@ void OnPlayerLeft(const MatchmakingServer::Player &player,
   LOG_ASSERT(match->context[kBlueTeam].IsArray());
   LOG_ASSERT(match->context[kRedTeam].IsArray());
 
+  LOG(INFO) << "OnPlayerLeft: player=" << player.id
+            << ", user_data=" << player.context.ToString(false)
+            << ", match_data=" << match->context.ToString(false);
+
   {
     // 매치메이킹 도중 나간 플레이어가 블루 팀에 있는지 확인합니다.
     Json::ValueIterator itr = match->context[kBlueTeam].Begin();
     Json::ConstValueIterator itr_end = match->context[kBlueTeam].End();
     for (; itr != itr_end; ++itr) {
       if (itr->GetString() == player.id) {
-        itr->RemoveElement(itr);
+        match->context[kBlueTeam].RemoveElement(itr);
         return;
       }
     }
@@ -371,7 +379,7 @@ void OnPlayerLeft(const MatchmakingServer::Player &player,
     Json::ConstValueIterator itr_end = match->context[kRedTeam].End();
     for (; itr != itr_end; ++itr) {
       if (itr->GetString() == player.id) {
-        itr->RemoveElement(itr);
+        match->context[kRedTeam].RemoveElement(itr);
         return;
       }
     }
