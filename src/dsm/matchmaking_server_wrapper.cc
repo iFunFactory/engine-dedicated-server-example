@@ -264,10 +264,12 @@ bool CheckPlayerRequirements(const MatchmakingServer::Player &player,
     avg_ranking_score += user_data2[kRankingScore].GetInteger();
   }
 
-  avg_match_level /= (players.size() - 1);
-  avg_ranking_score /= (players.size() - 1);
+  avg_match_level /= (players.size());
+  avg_ranking_score /= (players.size());
 
-  LOG(INFO) << "avg_match_level=" << avg_match_level
+  LOG(INFO) << "my_match_level=" << my_match_level
+            << ", my_ranking_score=" << my_ranking_score
+            << ", avg_match_level=" << avg_match_level
             << ", avg_ranking_score=" << avg_ranking_score;
 
   if (labs(my_match_level - avg_match_level) >= 10 /* 10점 이상 */ ||
