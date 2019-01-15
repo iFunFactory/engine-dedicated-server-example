@@ -135,9 +135,8 @@ void OnSessionClosed(const Ptr<Session> &session, SessionCloseReason reason) {
   LOG(INFO) << "Session closed: session=" << session->id()
             << ", reason=" << reason;
 
-  // 세션 연결이 어떤 이유에서 닫혔습니다. 이 세션이 로그인을 했다면
-  // 다음에 다시 로그인할 수 있도록 로그아웃 처리를 해야 합니다.
-  // 이후 과정은 authentication_helper.cc 를 참고하세요.
+  // 세션 연결이 닫혔습니다. 만약 이 세션이 로그인을 했다면
+  // 정상적인 흐름으로 다시 로그인할 수 있도록 로그아웃 처리를 하는 게 좋습니다.
   AuthenticationHelper::Logout(session,
       bind(&OnLogout, _1, _2, true /* caused by session close */));
 }

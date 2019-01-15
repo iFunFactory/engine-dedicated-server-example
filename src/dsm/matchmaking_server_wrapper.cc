@@ -213,7 +213,7 @@ bool CheckPlayerRequirements(const MatchmakingServer::Player &player,
 
   // 조건 1. 매치 상대가 없으면 (자신만 있다면) 바로 매치에 참여합니다.
   if (players.size() == 1) {
-    LOG(INFO) << "[Trigger 1] A new player is going to join the match"
+    LOG(INFO) << "[Condition 1] A new player is going to join the match"
               << ": match_id=" << match.match_id
               << ", account_id=" << player.id
               << ", user_context=" << player.context.ToString(false);
@@ -234,7 +234,7 @@ bool CheckPlayerRequirements(const MatchmakingServer::Player &player,
     const Json &user_context2 = itr->context;
     const int64_t elapsed_sec = user_context2["elapsed_time"].GetInteger();
     if (elapsed_sec >= 30) {
-      LOG(INFO) << "[Trigger 2] A new player is going to join the match"
+      LOG(INFO) << "[Condition 2] A new player is going to join the match"
                 << ": match_id=" << match.match_id
                 << ", account_id=" << player.id
                 << ", user_context=" << player.context.ToString(false);
@@ -276,7 +276,7 @@ bool CheckPlayerRequirements(const MatchmakingServer::Player &player,
   }
 
   // 매치 조건에 만족하는 플레이어를 찾았습니다.
-  LOG(INFO) << "[Trigger 3] A new player is going to join the match"
+  LOG(INFO) << "[Condition 3] A new player is going to join the match"
             << ": match_id=" << match.match_id
             << ", account_id=" << player.id
             << ", user_context=" << player.context.ToString(false);

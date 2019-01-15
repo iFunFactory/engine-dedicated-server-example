@@ -170,7 +170,7 @@ void OnMatchProgressUpdated(const string &account_id,
   std::stringstream ss;
   const std::vector<MatchmakingClient::Player> &players = match.players;
 
-  ss << "---------------------------------";
+  ss << "---------------------------------\n";
   auto itr = players.begin();
   auto itr_end = players.end();
 
@@ -181,7 +181,7 @@ void OnMatchProgressUpdated(const string &account_id,
     ss << "account_id=" << itr->id
        << ", user_data=: " << itr->context.ToString(false);
   }
-  ss << "---------------------------------";
+  ss << "\n---------------------------------";
   LOG(INFO) << ss.str();
 }
 
