@@ -33,6 +33,7 @@ extern const char *kMatchLevel;
 
 // 유저 랭킹 점수
 extern const char *kRankingScore;
+
 }
 
 #endif  // SRC_DSM_MATCHMAKING_TYPE_H_

@@ -15,11 +15,13 @@ namespace dsm {
 
 class AuthenticationHelper {
  public:
+  // 로그인 함수
   static void Login(const Ptr<Session> &session,
                     const Json &message,
                     const SessionResponseHandler &login_handler,
                     const SessionResponseHandler &logout_handler);
 
+  // 로그아웃 함수
   static void Logout(const Ptr<Session> &session,
                      const SessionResponseHandler &logout_handler);
 };

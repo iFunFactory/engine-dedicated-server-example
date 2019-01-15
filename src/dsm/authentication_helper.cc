@@ -18,32 +18,6 @@ const char *kPlatformName = "platform";
 
 const char *kPlatformAccessToken = "access_token";
 
-const char *kLoggedIn = "logged_in";
-
-
-void SetLogInContext(const Ptr<Session> &session,
-                     const string &platform,
-                     const bool logged_in) {
-  // 세션 ID 로 직렬화한 이벤트 위에서만 수정이 가능해야 합니다.
-  // 그렇지 않을 경우 동시에 두 스레드에서 이 정보를 수정할 수 있습니다.
-  LOG_ASSERT(GetCurrentEventTag() == session->id());
-
-  Json &context = session->GetContext();
-  context[kPlatformName] = platform;
-  context[kLoggedIn] = logged_in;
-}
-
-
-void ClearLogInContext(const Ptr<Session> &session) {
-  // 세션 ID 로 직렬화한 이벤트 위에서만 수정이 가능해야 합니다.
-  // 그렇지 않을 경우 동시에 두 스레드에서 이 정보를 수정할 수 있습니다.
-  LOG_ASSERT(GetCurrentEventTag() == session->id());
-
-  Json &context = session->GetContext();
-  context.RemoveAllAttributes();
-}
-
-
 
 void OnLoggedIn(const string &account_id,
                 const Ptr<Session> &session,
@@ -117,22 +91,14 @@ void OnLoggedIn(const string &account_id,
             << ", platform=" << platform
             << ", try_count=" << try_count;
 
-  // 동시에 두 스레드에서 접근하지 못하게 세션 ID 로 직렬화 한 이벤트 위에서 제거합니다.
-  Event::Invoke([session, platform, login_handler]() {
-    // 이 정보는 서버에서 세션을 관리하기 위한 용도로만 사용하며 클라이언트로
-    // 보내지 않습니다. account_id 는 AccountManager::FindLocalAccount() 함수로
-    // 가져올 수 있으므로 포함하지 않습니다.
-    SetLogInContext(session, platform, true /*logged in*/);
+  // 클라이언트에게 보낼 응답은 이 곳에 설정합니다.
+  Json response_data;
+  response_data["key1"] = "value1";
+  response_data["key2"] = "value2";
+  response_data["key3"] = "value3";
 
-    // 클라이언트에게 보낼 응답은 이 곳에 설정합니다.
-    Json response_data;
-    response_data["key1"] = "value1";
-    response_data["key2"] = "value2";
-    response_data["key3"] = "value3";
-
-    login_handler(ResponseResult::OK,
-        SessionResponse(session, 200, "OK", response_data));
-  }, session->id());
+  login_handler(ResponseResult::OK,
+      SessionResponse(session, 200, "OK", response_data));
 }
 
 
@@ -151,23 +117,11 @@ void OnLoggedOut(const string &account_id,
     return;
   }
 
-  // 이 예제에서는 로그인 후 SetLogInContext() 로 설정한 플랫폼 정보가 있어야 합니다.
-  // 만약 다음과 같은 환경이라면 assert 가 실패할 수 있습니다.
-  // 1. 분산 환경에서 다른 서버가 이 정보(kPlatformName) 를 설정하지 않는 환경
-  // 2. 이 서버가 다른 서버에서 로그인한 account_id 로 로그아웃을 시도할 때
-  LOG_ASSERT(session->GetContext().HasAttribute(kPlatformName, Json::kString));
-  const string &platform = session->GetContext()[kPlatformName].GetString();
-
   LOG(INFO) << "Logged out: session_id=" << session->id()
-            << ", account_id=" << account_id
-            << ", platform=" << platform;
+            << ", account_id=" << account_id;
 
-  // 동시에 두 스레드에서 접근하지 못하게 세션 ID 로 직렬화 한 이벤트 위에서 제거합니다.
-  Event::Invoke([session, logout_handler]() {
-    ClearLogInContext(session);
-    logout_handler(ResponseResult::OK,
-        SessionResponse(session, 200, "OK", Json()));
-  }, session->id());
+  logout_handler(ResponseResult::OK,
+      SessionResponse(session, 200, "OK", Json()));
 }
 
 }  // unnamed namespace
