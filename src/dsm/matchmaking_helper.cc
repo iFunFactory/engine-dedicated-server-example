@@ -22,6 +22,40 @@ const char *kUserData = "user_data";
 
 const char *kMatchType = "match_type";
 
+const char *kMatchHistory = "match_history";
+
+
+void LogMatchHistory(const Ptr<Session> &session,
+                     const string &account_id,
+                     const int64_t match_type) {
+  // 추후 이 세션을 사용하는 다른 곳에서 세션 컨텍스트를 수정할 수 있습니다.
+  // 따라서 세션 컨텍스트는 세션 ID 를 이벤트 태그로 하는 이벤트 위에서만
+  // 수정해야 합니다(세션 열림, 닫힘, 메시지 핸들러는 기본적으로 ID를 태그로 사용합니다)
+  LOG_ASSERT(GetCurrentEventTag() == session->id());
+  Json &context = session->GetContext();
+  if (not context.HasAttribute(kMatchHistory, Json::kObject)) {
+    context[kMatchHistory].SetObject();
+  }
+
+  // 로그아웃 (AccountManager 를 쓸 수 없는) 상황에서도 접근할 수 있게
+  // 계정 정보를 기록해둡니다.
+  context[kMatchHistory][kAccountId] = account_id;
+  context[kMatchHistory][kMatchType] = match_type;
+}
+
+
+void ClearMatchHistory(const Ptr<Session> &session) {
+  // 추후 이 세션을 사용하는 다른 곳에서 세션 컨텍스트를 수정할 수 있습니다.
+  // 따라서 세션 컨텍스트는 세션 ID 를 이벤트 태그로 하는 이벤트 위에서만
+  // 수정해야 합니다(세션 열림, 닫힘, 메시지 핸들러는 기본적으로 ID를 태그로 사용합니다)
+  LOG_ASSERT(GetCurrentEventTag() == session->id());
+  Json &context = session->GetContext();
+
+  if (context.HasAttribute(kMatchHistory, Json::kObject)) {
+    context.RemoveAttribute(kMatchHistory);
+  }
+}
+
 
 void OnMatchCompleted(const string &account_id,
                       const MatchmakingClient::Match &match,
@@ -108,8 +142,12 @@ void OnMatchCompleted(const string &account_id,
   // (CheckMatchRequirements 함수에서 kMatchComplete 를 반환한 후입니다)
   // 이 시점에서는 단순히 클라이언트에게 매치메이킹 완료 메시지만 전달합니다.
   // (게임 로직에 따라 이 메시지 전송이 불필요할 수 있습니다)
-  handler(ResponseResult::OK,
-          SessionResponse(session, 200, "OK", Json()));
+
+  Event::Invoke([session, handler](){
+    ClearMatchHistory(session);
+    handler(ResponseResult::OK,
+            SessionResponse(session, 200, "OK", Json()));
+  }, session->id());
 }
 
 
@@ -155,6 +193,11 @@ void MatchmakingHelper::ProcessMatchmaking(
     const Json &message,
     const SessionResponseHandler &handler) {
   LOG_ASSERT(session);
+  // 메시지 핸들러 함수는 세션 ID 를 이벤트 태그로 하는 이벤트 위에서 실행합니다.
+  // 아래는 이 함수를 메시지 핸들러 위에서 실행하게 강제하게 검사하는 식입니다.
+  // 세션 ID 별로 이 함수를 직렬화하지 않으면 동시에 서로 다른 곳에서
+  // 이 세션에 접근할 수 있습니다.
+  LOG_ASSERT(GetCurrentEventTag() == session->id());
 
   //
   // 매치메이킹 + 데디케이티드 서버 스폰 요청 예제
@@ -258,6 +301,15 @@ void MatchmakingHelper::ProcessMatchmaking(
   // 타임 아웃 (기본 값: kNullTimeout)
   const WallClock::Duration timeout = MatchmakingClient::kNullTimeout;
 
+  // 이 세션에서 요청한 매치 타입을 기록해둡니다.
+  LogMatchHistory(session, account_id, match_type);
+
+  LOG(INFO) << "Requesting a matchmaking"
+            << ": session_id=" << session->id()
+            << ", account_id=" << account_id
+            << ", match_type=" << match_type
+            << ", user_data=" << user_data.ToString(false);
+
   MatchmakingClient::StartMatchmaking2(
       match_type, account_id, user_data,
       bind(&OnMatchCompleted, _1, _2, _3, session, handler),
@@ -271,6 +323,12 @@ void MatchmakingHelper::CancelMatchmaking(
     const Ptr<Session> &session,
     const Json &message,
     const SessionResponseHandler &handler) {
+  // 메시지 핸들러 함수는 세션 ID 를 이벤트 태그로 하는 이벤트 위에서 실행합니다.
+  // 아래는 이 함수를 메시지 핸들러 위에서 실행하게 강제하게 검사하는 식입니다.
+  // 세션 ID 별로 이 함수를 직렬화하지 않으면 동시에 서로 다른 곳에서
+  // 이 세션에 접근할 수 있습니다.
+  LOG_ASSERT(GetCurrentEventTag() == session->id());
+
   // 클라이언트는 다음 메시지 형태로 매치메이킹 취소를 요청합니다.
   // {
   //   "account_id": "id",
@@ -327,6 +385,45 @@ void MatchmakingHelper::CancelMatchmaking(
                   SessionResponse(session, 200, "OK.", Json()));
         }
       };
+
+  LOG(INFO) << "Canceling matchmaking"
+            << ": session_id=" << session->id()
+            << ", account_id=" << account_id
+            << ", match_type=" << match_type;
+
+  MatchmakingClient::CancelMatchmaking(
+      match_type, account_id, cancel_callback);
+}
+
+
+void MatchmakingHelper::CancelMatchmaking(const Ptr<Session> &session) {
+  // 메시지 핸들러 함수는 세션 ID 를 이벤트 태그로 하는 이벤트 위에서 실행합니다.
+  // 아래는 이 함수를 메시지 핸들러 위에서 실행하게 강제하게 검사하는 식입니다.
+  // 세션 ID 별로 이 함수를 직렬화하지 않으면 동시에 서로 다른 곳에서
+  // 이 세션에 접근할 수 있습니다.
+  LOG_ASSERT(GetCurrentEventTag() == session->id());
+
+  Json &context = session->GetContext();
+  if (not context.HasAttribute(kMatchHistory, Json::kObject)) {
+    // 매칭을 요청한 적이 없습니다. 종료합니다.
+    return;
+  }
+
+  LOG_ASSERT(context[kMatchHistory].HasAttribute(kAccountId, Json::kObject));
+  LOG_ASSERT(context[kMatchHistory].HasAttribute(kMatchType, Json::kObject));
+
+  const string &account_id = context[kMatchHistory][kAccountId].GetString();
+  const int64_t match_type = context[kMatchHistory][kMatchType].GetInteger();
+
+  MatchmakingClient::CancelCallback cancel_callback =
+      [](const string &account_id, MatchmakingClient::CancelResult result) {
+    // 아무것도 하지 않습니다.
+  };
+
+  LOG(INFO) << "Canceling matchmaking(with session context)"
+            << ": session_id=" << session->id()
+            << ", account_id=" << account_id
+            << ", match_type=" << match_type;
 
   MatchmakingClient::CancelMatchmaking(
       match_type, account_id, cancel_callback);

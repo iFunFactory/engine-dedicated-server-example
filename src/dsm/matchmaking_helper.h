@@ -21,10 +21,15 @@ class MatchmakingHelper {
       const Json &message,
       const SessionResponseHandler &handler);
 
+  // 'message' 안에 매칭 타입이 있는 경우 사용
   static void CancelMatchmaking(
       const Ptr<Session> &session,
       const Json &message,
       const SessionResponseHandler &handler);
+
+  // 이 세션으로 요청한 매칭이 있으면 취소하는 함수
+  // 로그아웃 상태에서도 사용할 수 있습니다.
+  static void CancelMatchmaking(const Ptr<Session> &session);
 };
 
 }  // namespace dsm

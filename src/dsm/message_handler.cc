@@ -111,8 +111,18 @@ void OnLogout(const ResponseResult error,
             << (caused_by_session_close ? "session close" : "action")
             << ", data=" << response.data.ToString(false);
 
-  SendMyMessage(response.session, kLogoutMessage, response.error_code,
-                response.error_message, response.data);
+  Event::Invoke([response, caused_by_session_close](){
+    // 매칭 요청을 취소하지 않고 로그아웃/세션 종료를 할 수 있습니다.
+    // 이전에 이 세션으로 매칭을 요청한 기록이 있는지 확인 후 취소합니다.
+    MatchmakingHelper::CancelMatchmaking(response.session);
+
+    // 세션 닫힘 이벤트가 아니라면 로그아웃 요청으로 이 콜백을 호출한 경우므로
+    // 메시지를 보냅니다.
+    if (not caused_by_session_close) {
+      SendMyMessage(response.session, kLogoutMessage, response.error_code,
+                    response.error_message, response.data);
+    }
+  }, response.session->id());
 }
 
 
