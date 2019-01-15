@@ -132,13 +132,24 @@ void OnSessionOpened(const Ptr<Session> &session) {
 
 
 void OnSessionClosed(const Ptr<Session> &session, SessionCloseReason reason) {
-  LOG(INFO) << "Session closed: session=" << session->id()
+  LOG(INFO) << "Session closed: session_id=" << session->id()
             << ", reason=" << reason;
 
   // 세션 연결이 닫혔습니다. 만약 이 세션이 로그인을 했다면
   // 정상적인 흐름으로 다시 로그인할 수 있도록 로그아웃 처리를 하는 게 좋습니다.
   AuthenticationHelper::Logout(session,
       bind(&OnLogout, _1, _2, true /* caused by session close */));
+}
+
+
+void OnTcpTransportDetached(const Ptr<Session> &session) {
+  LOG(INFO) << "TCP transport detached: session_id=" << session->id();
+  // TCP 연결이 닫혔으나 세션은 유효합니다. 이 세션이 매칭 요청을 했다면
+  // 매칭을 취소합니다. 클라이언트는 TCP 연결이 끊어졌을 때 매칭을 다시 시도하게
+  // 해야 합니다.
+  Event::Invoke([session]() {
+    MatchmakingHelper::CancelMatchmaking(session);
+  }, session->id());
 }
 
 
@@ -250,6 +261,10 @@ void OnCancelMatchRequest(const Ptr<Session> &session, const Json &message) {
 void RegisterMessageHandler() {
   // 세션 열림 및 닫힘 핸들러를 등록합니다.
   HandlerRegistry::Install2(OnSessionOpened, OnSessionClosed);
+  // TCP 연결이 끊어졌을 때 호출할 핸들러를 등록합니다. 세션이 닫힌 건 아니므로
+  // 언제든지 다른 트랜스포트를 통해 이 세션을 사용할 수 있습니다.
+  // (WIFI -> LTE 이동과 같은 상황이 좋은 예입니다)
+  HandlerRegistry::RegisterTcpTransportDetachedHandler(OnTcpTransportDetached);
   // 로그인 요청 핸들러를 등록합니다.
   HandlerRegistry::Register(kLoginMessage, OnLoginRequest);
   // 로그아웃 요청 핸들러를 등록합니다
