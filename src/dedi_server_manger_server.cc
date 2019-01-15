@@ -31,7 +31,7 @@ DECLARE_bool(enable_redis);
 // 봇 클라이언트 개수를 지정합니다.
 // dedi_server_manger.bot-local -bot_clients=<클라이언트 개수> 로 지정할 수
 // 있습니다.
-DEFINE_int64(bot_clients, 1, "Number of clients that are used for test.");
+DEFINE_int64(bot_clients, 2, "Number of clients that are used for test.");
 
 
 namespace {
@@ -75,7 +75,7 @@ class DediServerMangerServer : public Component {
       dsm::DediServerHelper::RegisterHandler();
     } else {
       LOG_ASSERT(FLAGS_app_flavor == "bot");
-      bot::SimpleBotClient::Install(4 /* 스레드 개수 */, 2 /* 클라이언트 개수 */);
+      bot::SimpleBotClient::Install(4 /* 스레드 개수 */, FLAGS_bot_clients);
     }
 
     return true;
