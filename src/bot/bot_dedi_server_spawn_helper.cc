@@ -77,7 +77,7 @@ void OnClientRedirection(const Ptr<funtest::Session> &session,
   // port: 데디케이티드 서버 포트 번호입니다.
   // token: 데디케이티드 서버가 신뢰하는 클라이언트인지 확인하는 데 사용할 토큰입니다.
 
-  LOG(INFO) << "Client redirection message received"
+  LOG(INFO) << "[BOT] Received client redirection"
             << ": session_id=" << session->id()
             << ", message=" << message.ToString(false);
 
@@ -133,6 +133,10 @@ void BotDediServerSpawnHelper::Spawn(
   request_data[kUserData] = user_data;
   // match_data 설정
   request_data[kMatchData] = match_data;
+
+  LOG(INFO) << "[BOT] Spawning a new dedicated server"
+            << ": bot_session_id=" << session->id()
+            << ", request_data=" << request_data.ToString(false);
 
   session->SendMessage(kSpawnRequest, request_data, kTcp);
 }

@@ -107,7 +107,7 @@ void OnClientRedirection(const Ptr<funtest::Session> &session,
   // port: 데디케이티드 서버 포트 번호입니다.
   // token: 데디케이티드 서버가 신뢰하는 클라이언트인지 확인하는 데 사용할 토큰입니다.
 
-  LOG(INFO) << "Client redirection message received"
+  LOG(INFO) << "[BOT] Received client redirection"
             << ": session_id=" << session->id()
             << ", message=" << message.ToString(false);
 
@@ -163,6 +163,10 @@ void BotMatchmakingHelper::StartMatchmaking(
   request_data[kUserData] = user_data;
   // match_data 설정 (dsm/matchmaking_type.h 파일에 정의된 내용)
   request_data[kMatchType] = dsm::kMatch1vs1;
+
+  LOG(INFO) << "[BOT] Request matchmaking"
+            << ": bot_session_id=" << session->id()
+            << ", request_data=" << request_data.ToString(false);
 
   session->SendMessage(kMatchThenSpawnRequest, request_data, kTcp);
 }
