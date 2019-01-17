@@ -10,6 +10,8 @@
 #include <funapi.h>
 #include <funapi/test/network.h>
 
+#include <src/dsm/matchmaking_type.h>
+
 
 namespace bot {
 
@@ -19,21 +21,11 @@ class BotMatchmakingHelper {
       const bool succeed,
       const Ptr<funtest::Session> &session)> MatchmakingHandler;
 
-  typedef function<void (
-      const bool succeed,
-      const Ptr<funtest::Session> &session)> SpawnHandler;
+  static void Install(const MatchmakingHandler &matchmaking_handler);
 
-  typedef function<void (
+  static void StartMatchmaking(
       const Ptr<funtest::Session> &session,
-      const string &host,
-      const int64_t port,
-      const string &token)> RedirectionHandler;
-
-  static void Install(const MatchmakingHandler &matchmaking_handler,
-                      const SpawnHandler &spawn_handler,
-                      const RedirectionHandler &redirection_handler);
-
-  static void StartMatchmaking(const Ptr<funtest::Session> &session);
+      const dsm::MatchType &match_type);
 };
 
 }  // namespace bot

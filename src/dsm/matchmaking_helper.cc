@@ -9,6 +9,7 @@
 #include <funapi.h>
 
 #include <src/dsm/matchmaking_type.h>
+#include <src/dsm/dedicated_server_helper.h>
 
 
 namespace dsm {
@@ -140,13 +141,11 @@ void OnMatchCompleted(const string &account_id,
   // 매치메이킹에 성공했습니다. 매치메이킹 서버(matchmaking_server_wrapper.cc)에서
   // 매치에 성공한 사람들을 모아 데디케이티드 서버 생성을 시작합니다.
   // (CheckMatchRequirements 함수에서 kMatchComplete 를 반환한 후입니다)
-  // 이 시점에서는 단순히 클라이언트에게 매치메이킹 완료 메시지만 전달합니다.
-  // (게임 로직에 따라 이 메시지 전송이 불필요할 수 있습니다)
+  // 이 시점에서는 단순히 히스토리만 초기화하고 메시지는 보내지 않습니다.
+  // (데디케이티드 서버 생성 후 최종적으로 성공 메시지를 보냅니다)
 
-  Event::Invoke([session, handler](){
+  Event::Invoke([session, handler]() {
     ClearMatchHistory(session);
-    handler(ResponseResult::OK,
-            SessionResponse(session, 200, "OK", Json()));
   }, session->id());
 }
 
@@ -188,7 +187,7 @@ void OnMatchProgressUpdated(const string &account_id,
 }  // unnamed namespace
 
 
-void MatchmakingHelper::ProcessMatchmaking(
+void MatchmakingHelper::ProcessSpawnOrMatchmaking(
     const Ptr<Session> &session,
     const Json &message,
     const SessionResponseHandler &handler) {
@@ -274,13 +273,18 @@ void MatchmakingHelper::ProcessMatchmaking(
   //   },
   Json user_data = message[kUserData];
   if (not user_data.HasAttribute(kMatchLevel, Json::kInteger) ||
-      not user_data.HasAttribute(kRankingScore, Json::kInteger)) {
+      not user_data.HasAttribute(kMMRScore, Json::kInteger)) {
     // 매치메이킹 요청에 필요한 인자가 부족합니다.
     LOG(ERROR) << "Missing required fields"
                << ": session_id=" << session->id()
                << ", message=" << message.ToString(false);
     handler(ResponseResult::FAILED,
             SessionResponse(session, 400, "Missing required fields.", Json()));
+    return;
+  }
+
+  if (match_type == kNoMatching) {
+    DedicatedServerHelper::SpawnDedicatedServer(account_id, user_data);
     return;
   }
 
@@ -354,6 +358,12 @@ void MatchmakingHelper::CancelMatchmaking(
     handler(ResponseResult::FAILED,
             SessionResponse(session, 400, "Invalid arguments.", Json()));
     return;
+  }
+
+  if (match_type == kNoMatching) {
+    // 매치메이킹 기능을 쓰지 않으므로 취소 처리한다.
+    handler(ResponseResult::OK,
+            SessionResponse(session, 200, "OK.", Json()));
   }
 
   // 계정

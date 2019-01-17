@@ -4,8 +4,8 @@
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
-#ifndef SRC_BOT_BOT_DEDI_SERVER_SPAWN_HELPER_H_
-#define SRC_BOT_BOT_DEDI_SERVER_SPAWN_HELPER_H_
+#ifndef SRC_BOT_BOT_DEDICATED_SERVER_HELPER_H_
+#define SRC_BOT_BOT_DEDICATED_SERVER_HELPER_H_
 
 #include <funapi.h>
 #include <funapi/test/network.h>
@@ -13,24 +13,17 @@
 
 namespace bot {
 
-class BotDediServerSpawnHelper {
+class BotDedicatedServerHelper {
  public:
-  typedef function<void (
-      const bool succeed,
-      const Ptr<funtest::Session> &session)> SpawnHandler;
-
   typedef function<void (
       const Ptr<funtest::Session> &session,
       const string &host,
       const int64_t port,
       const string &token)> RedirectionHandler;
 
-  static void Install(const SpawnHandler &spawn_handler,
-                      const RedirectionHandler &redirection_handler);
-
-  static void Spawn(const Ptr<funtest::Session> &session);
+  static void Install(const RedirectionHandler &redirection_handler);
 };
 
 }  // namespace bot
 
-#endif  // SRC_BOT_BOT_DEDI_SERVER_SPAWN_HELPER_H_
+#endif  // SRC_BOT_BOT_DEDICATED_SERVER_HELPER_H_

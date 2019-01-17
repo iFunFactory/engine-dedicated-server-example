@@ -9,12 +9,14 @@
 
 #include <funapi.h>
 
+#include <src/dsm/matchmaking_type.h>
 
 namespace bot {
 
 class SimpleBotClient {
  public:
-  static void Install(int threads, int bot_clients);
+  static void Install(
+      int threads, int bot_clients, const dsm::MatchType match_type);
   static void Uninstall();
 
   static void Start();

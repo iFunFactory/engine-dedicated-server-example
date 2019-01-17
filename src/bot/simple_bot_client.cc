@@ -1,4 +1,4 @@
-// Copyright (C) 2018 iFunFactory Inc. All Rights Reserved.
+// Copyright (C) 2018-2019 iFunFactory Inc. All Rights Reserved.
 //
 // This work is confidential and proprietary to iFunFactory Inc. and
 // must not be used, disclosed, copied, or distributed without the prior
@@ -12,16 +12,15 @@
 #include <funapi/common/json.h>
 
 #include <src/bot/bot_authentication_helper.h>
-#include <src/bot/bot_dedi_server_spawn_helper.h>
+#include <src/bot/bot_dedicated_server_helper.h>
 #include <src/bot/bot_matchmaking_helper.h>
+#include <src/dsm/matchmaking_type.h>
+
 
 DEFINE_string(dsm_server_host, "127.0.0.1",
               "Dedicated server manager server host.");
 
 DEFINE_uint64(dsm_server_port, 8012, "Dedicated server manager server port.");
-
-DEFINE_bool(use_matchmaking, true,
-            "Use matchmaking feature before spawning a dedicated server.");
 
 //
 // 봇 클라이언트 코드입니다. 서버에서 사용하는 Session 과 비슷한 funtest::Session
@@ -30,6 +29,7 @@ DEFINE_bool(use_matchmaking, true,
 // 또한 이 클래스는 서버에서 스트레스 테스트를 목적으로 제공하므로 실제 유니티/언리얼
 // 플러그인에서 제공하는 기능들과 다를 수 있습니다.
 //
+
 namespace bot {
 
 namespace {
@@ -38,6 +38,7 @@ const char *kClientIndex = "index";
 
 int the_bot_clients = 0;
 
+dsm::MatchType the_match_type = dsm::kNoMatching;
 
 void OnMatchmakingResponseReceived(const bool succeed,
                                    const Ptr<funtest::Session> &session) {
@@ -45,11 +46,10 @@ void OnMatchmakingResponseReceived(const bool succeed,
   LOG_ASSERT(context.HasAttribute(kClientIndex, Json::kInteger));
   const int64_t index = context[kClientIndex].GetInteger();
 
-
   LOG(INFO) << "Received a matchmaking response"
             << ": session_id=" << session->id()
             << ", index=" << index
-            << ", spawned=" << succeed;
+            << ", succeed=" << succeed;
 
   if (not succeed) {
     // 매치메이킹 요청이 실패했습니다.
@@ -61,30 +61,6 @@ void OnMatchmakingResponseReceived(const bool succeed,
   // 매치메이킹 요청에 성공했습니다.
   // 몇 분 이내로 데디케이티드 서버 스폰 요청이 성공하고
   // OnSpawnResponseReceived() 를 호출할 것입니다.
-}
-
-
-void OnSpawnResponseReceived(const bool succeed,
-                             const Ptr<funtest::Session> &session) {
-  Json &context = session->GetContext();
-  LOG_ASSERT(context.HasAttribute(kClientIndex, Json::kInteger));
-  const int64_t index = context[kClientIndex].GetInteger();
-
-
-  LOG(INFO) << "Received a spawn response"
-            << ": session_id=" << session->id()
-            << ", index=" << index
-            << ", spawned=" << succeed;
-
-  if (not succeed) {
-    // 데디케이티드 서버 스폰 요청이 실패했습니다.
-    // OnClientRedirection() 호출 없이 끝나므로
-    // 1. 여기서 재시도 할지,
-    // 2. 사용자에게 실패를 알릴 지 결정해야 합니다.
-  }
-
-  // 데디케이티드 서버 스폰 요청에 성공했습니다.
-  // 이후 곧바로 OnClientRedirection() 함수를 호출합니다.
 }
 
 
@@ -125,13 +101,10 @@ void OnLoginResponseReceived(
     return;
   }
 
-  if (not FLAGS_use_matchmaking) {
-    // 로그인에 성공했습니다. 데디케이티드 서버 요청을 진행합니다.
-    BotDediServerSpawnHelper::Spawn(session);
-  } else {
-    // 로그인에 성공했습니다. 매치메이킹 + 데디케이티드 서버 요청을 진행합니다.
-    BotMatchmakingHelper::StartMatchmaking(session);
-  }
+
+  // 로그인에 성공했습니다. 매치메이킹 + 데디케이티드 서버 요청을 진행합니다.
+  // dsm::kNoMatching = 매칭 없이 진행, dsm/matchmaking_type.h 파일에 정의된 내용
+  BotMatchmakingHelper::StartMatchmaking(session, the_match_type);
 }
 
 
@@ -153,20 +126,20 @@ void OnSessionClosed(const Ptr<funtest::Session> &session,
 }  // unnamed namespace
 
 
-void SimpleBotClient::Install(int threads, int bot_clients) {
+void SimpleBotClient::Install(
+    int threads, int bot_clients, const dsm::MatchType match_type) {
   // 봇 클라이언트의 세션 핸들러를 등록합니다.
   funtest::Network::Install(OnSessionOpened, OnSessionClosed, threads);
 
   BotAuthenticationHelper::Install(OnLoginResponseReceived);
 
-  if (not FLAGS_use_matchmaking) {
-    BotDediServerSpawnHelper::Install(
-        OnSpawnResponseReceived, OnClientRedirection);
-  } else {
-    BotMatchmakingHelper::Install(
-        OnMatchmakingResponseReceived, OnSpawnResponseReceived,
-        OnClientRedirection);
-  }
+  BotMatchmakingHelper::Install(OnMatchmakingResponseReceived);
+
+  BotDedicatedServerHelper::Install(OnClientRedirection);
+
+  LOG_ASSERT(dsm::IsValidMatchType(match_type));
+  the_match_type = match_type;
+
   the_bot_clients = bot_clients;
 }
 
@@ -180,7 +153,7 @@ void SimpleBotClient::Start() {
   LOG_ASSERT(the_bot_clients != 0);
 
   for (int index = 0; index < the_bot_clients; ++index) {
-    LOG(INFO) << "Connecting: index=" << index
+    LOG(INFO) << "[BOT] Connecting: index=" << index
               << ", host=" << FLAGS_dsm_server_host
               << ", port=" << FLAGS_dsm_server_port;
     Ptr<funtest::Session> session = funtest::Session::Create();

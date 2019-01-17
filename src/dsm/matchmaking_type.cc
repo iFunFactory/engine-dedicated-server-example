@@ -12,6 +12,6 @@ namespace dsm {
 const char *kMatchLevel = "level";
 
 // 유저 랭킹 점수
-const char *kRankingScore = "ranking_score";
+const char *kMMRScore = "mmr_score";
 
 }  // namespace dsm

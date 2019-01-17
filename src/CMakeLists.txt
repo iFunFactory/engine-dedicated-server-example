@@ -13,8 +13,8 @@ set(
   ${CMAKE_SOURCE_DIR}/src/dsm/message_handler.cc
   ${CMAKE_SOURCE_DIR}/src/dsm/authentication_helper.h
   ${CMAKE_SOURCE_DIR}/src/dsm/authentication_helper.cc
-  ${CMAKE_SOURCE_DIR}/src/dsm/dedi_server_helper.h
-  ${CMAKE_SOURCE_DIR}/src/dsm/dedi_server_helper.cc
+  ${CMAKE_SOURCE_DIR}/src/dsm/dedicated_server_helper.h
+  ${CMAKE_SOURCE_DIR}/src/dsm/dedicated_server_helper.cc
   ${CMAKE_SOURCE_DIR}/src/dsm/matchmaking_type.h
   ${CMAKE_SOURCE_DIR}/src/dsm/matchmaking_type.cc
   ${CMAKE_SOURCE_DIR}/src/dsm/matchmaking_server_wrapper.h
@@ -25,8 +25,8 @@ set(
   ${CMAKE_SOURCE_DIR}/src/bot/simple_bot_client.cc
   ${CMAKE_SOURCE_DIR}/src/bot/bot_authentication_helper.h
   ${CMAKE_SOURCE_DIR}/src/bot/bot_authentication_helper.cc
-  ${CMAKE_SOURCE_DIR}/src/bot/bot_dedi_server_spawn_helper.h
-  ${CMAKE_SOURCE_DIR}/src/bot/bot_dedi_server_spawn_helper.cc
+  ${CMAKE_SOURCE_DIR}/src/bot/bot_dedicated_server_helper.h
+  ${CMAKE_SOURCE_DIR}/src/bot/bot_dedicated_server_helper.cc
   ${CMAKE_SOURCE_DIR}/src/bot/bot_matchmaking_helper.h
   ${CMAKE_SOURCE_DIR}/src/bot/bot_matchmaking_helper.cc
   ${CMAKE_SOURCE_DIR}/src/${PROJECT_NAME}_server.cc

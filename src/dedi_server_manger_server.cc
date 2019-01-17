@@ -11,9 +11,10 @@
 #include <src/dedi_server_manger_object.h>
 
 #include <src/bot/simple_bot_client.h>
-#include <src/dsm/dedi_server_helper.h>
+#include <src/dsm/dedicated_server_helper.h>
 #include <src/dsm/matchmaking_server_wrapper.h>
 #include <src/dsm/message_handler.h>
+#include <src/dsm/matchmaking_type.h>
 
 // You can differentiate game server flavors.
 // You can see more details in the following link.
@@ -72,10 +73,12 @@ class DediServerMangerServer : public Component {
     // 클라이언트 요청 핸들러를 등록합니다.
     if (FLAGS_app_flavor == "server") {
       dsm::RegisterMessageHandler();
-      dsm::DediServerHelper::RegisterHandler();
     } else {
       LOG_ASSERT(FLAGS_app_flavor == "bot");
-      bot::SimpleBotClient::Install(4 /* 스레드 개수 */, FLAGS_bot_clients);
+      bot::SimpleBotClient::Install(
+          4 /* 스레드 개수 */,
+          FLAGS_bot_clients /* 봇 개수 */,
+          dsm::kNoMatching /* 매치메이킹 타입 */);
     }
 
     return true;
@@ -91,7 +94,6 @@ class DediServerMangerServer : public Component {
     //
 
     if (FLAGS_app_flavor == "server") {
-      dsm::MatchmakingServerWrapper::Start();
     } else {
       LOG_ASSERT(FLAGS_app_flavor == "bot");
       // 봇 클라이언트를 실행합니다.

@@ -11,7 +11,7 @@
 
 #include <src/dsm/authentication_helper.h>
 #include <src/dsm/session_response.h>
-#include <src/dsm/dedi_server_helper.h>
+#include <src/dsm/dedicated_server_helper.h>
 #include <src/dsm/matchmaking_helper.h>
 #include <src/dsm/matchmaking_server_wrapper.h>
 
@@ -42,8 +42,6 @@ namespace {
 const char *kLoginMessage = "login";
 
 const char *kLogoutMessage = "logout";
-
-const char *kSpawnMessage = "spawn";
 
 const char *kMatchThenSpawnMessage = "match";
 
@@ -111,7 +109,7 @@ void OnLogout(const ResponseResult error,
             << (caused_by_session_close ? "session close" : "action")
             << ", data=" << response.data.ToString(false);
 
-  Event::Invoke([response, caused_by_session_close](){
+  Event::Invoke([response, caused_by_session_close]() {
     // 매칭 요청을 취소하지 않고 로그아웃/세션 종료를 할 수 있습니다.
     // 이전에 이 세션으로 매칭을 요청한 기록이 있는지 확인 후 취소합니다.
     MatchmakingHelper::CancelMatchmaking(response.session);
@@ -186,30 +184,22 @@ void OnLogoutRequest(const Ptr<Session> &session, const Json &message) {
 }
 
 
-void OnSpawnRequest(const Ptr<Session> &session, const Json &message) {
-  const SessionId &session_id = session->id();
-  const Json &session_context = session->GetContext();
+void OnDedicatedServerSpawned(
+    const ResponseResult error, const SessionResponse &response) {
+  // 클라이언트 리다이렉션 메시지는 엔진 내부에서 이 핸들러와 별개로 처리합니다.
+  // 이 곳에서는 서버 생성 결과만 메시지를 보냅니다.
+  LOG_ASSERT(response.session);
 
-  SessionResponseHandler response_handler =
-      [](const ResponseResult error, const SessionResponse &response) {
-        if (not response.session) {
-          // response.session 이 Session::kNullPtr 이어서 메시지를 보낼 수 없습니다.
-          // 자세한 내용은 dedi_server_helper.cc 의
-          // OnDedicatedServerSpawned() 함수를 참고하세요.
-          return;
-        }
+  LOG(INFO) << "OnDedicatedServerSpawned"
+            << ": session_id=" << response.session->id()
+            << ", error=" << (error == ResponseResult::OK ? "ok" : "failed")
+            << ", response.error_code=" << response.error_code
+            << ", response.error_message=" << response.error_message
+            << ", response.data=" << response.data.ToString(false);
 
-        SendMyMessage(response.session, kSpawnMessage, response.error_code,
-                      response.error_message, response.data);
-      };
-
-  LOG(INFO) << "OnSpawnRequest"
-            << ": session=" << session_id
-            << ", context=" << session_context.ToString(false)
-            << ", message=" << message.ToString(false);
-
-  // 이후 과정은 dedi_server_helper.cc 를 참고하세요.
-  DediServerHelper::ProcessDediServerSpawn1(session, message, response_handler);
+  SendMyMessage(response.session, kMatchThenSpawnMessage,
+                response.error_code, response.error_message,
+                response.data);
 }
 
 
@@ -231,7 +221,8 @@ void OnMatchThenSpawnRequest(const Ptr<Session> &session, const Json &message) {
       };
 
   // 이후 과정은 matchmaking_helper.cc 를 참고하세요.
-  MatchmakingHelper::ProcessMatchmaking(session, message, response_handler);
+  MatchmakingHelper::ProcessSpawnOrMatchmaking(
+      session, message, response_handler);
 }
 
 
@@ -269,25 +260,16 @@ void RegisterMessageHandler() {
   HandlerRegistry::Register(kLoginMessage, OnLoginRequest);
   // 로그아웃 요청 핸들러를 등록합니다
   HandlerRegistry::Register(kLogoutMessage, OnLogoutRequest);
-  // 데디케이티드 서버 스폰(Spawn) 요청 핸들러를 등록합니다.
-  HandlerRegistry::Register(kSpawnMessage, OnSpawnRequest);
   // 매치메이킹 후 매치가 성사된 유저들을 모아 데디케이티드 서버를 스폰합니다.
   HandlerRegistry::Register(kMatchThenSpawnMessage, OnMatchThenSpawnRequest);
   // 매치메이킹 요청을 취소합니다.
   HandlerRegistry::Register(kCancelMatchMessage, OnCancelMatchRequest);
 
-  // 매치메이킹 후 데디케이티드 서버 생성이 완료된 클라이언트로
+  // 데디케이티드 서버 생성이 완료된 클라이언트로
   // 스폰 결과에 대한 응답을 보낼 때 사용합니다.
-  // ( 클라이언트 리다이렉션 메시지는 엔진 내부에서 이 핸들러와 별개로 처리합니다. )
-  SessionResponseHandler response_handler =
-      [](const ResponseResult error, const SessionResponse &response) {
-        LOG_ASSERT(response.session);
-        SendMyMessage(response.session, kMatchThenSpawnMessage,
-                      response.error_code, response.error_message,
-                      response.data);
-      };
-
-  MatchmakingServerWrapper::Install(response_handler);
+  dsm::DedicatedServerHelper::Install(OnDedicatedServerSpawned);
+  // 매치매이킹 서버가 내부적으로 쓰는 핸들러들을 등록합니다.
+  dsm::MatchmakingServerWrapper::Install();
 }
 
 }  // namespace dsm

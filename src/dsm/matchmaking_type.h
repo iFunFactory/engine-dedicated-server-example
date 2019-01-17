@@ -14,14 +14,17 @@
 namespace dsm {
 
 enum MatchType {
+  kNoMatching = 0,
   kMatch1vs1 = 1,
   kMatch3v3 = 3,
-  kMatch6v6 = 6
+  kMatch6v6 = 6,
+
 };
 
 
 inline bool IsValidMatchType(const int64_t match_type_int) {
-  return match_type_int == kMatch1vs1 ||
+  return match_type_int == kNoMatching ||
+      match_type_int == kMatch1vs1 ||
       match_type_int == kMatch3v3 ||
       match_type_int == kMatch6v6;
 }
@@ -32,7 +35,7 @@ inline bool IsValidMatchType(const int64_t match_type_int) {
 extern const char *kMatchLevel;
 
 // 유저 랭킹 점수
-extern const char *kRankingScore;
+extern const char *kMMRScore;
 
 }
 

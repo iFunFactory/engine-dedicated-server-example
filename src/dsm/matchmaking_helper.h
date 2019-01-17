@@ -16,7 +16,7 @@ namespace dsm {
 
 class MatchmakingHelper {
  public:
-  static void ProcessMatchmaking(
+  static void ProcessSpawnOrMatchmaking(
       const Ptr<Session> &session,
       const Json &message,
       const SessionResponseHandler &handler);
