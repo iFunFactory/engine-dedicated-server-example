@@ -26,6 +26,13 @@ class DedicatedServerHelper {
   static void SpawnDedicatedServer(
       const MatchmakingServer::Match &match);
 
+  typedef function<void (bool succeed)> SendUserCallback;
+
+  static void SendUser(
+      int64_t match_type,
+      const string &account_id,
+      const Json &user_data,
+      const SendUserCallback &send_callback);
 };
 
 }  // namespace dsm

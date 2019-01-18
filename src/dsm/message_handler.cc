@@ -238,8 +238,8 @@ void OnCancelMatchRequest(const Ptr<Session> &session, const Json &message) {
   SessionResponseHandler response_handler =
       [](const ResponseResult error, const SessionResponse &response) {
         LOG_ASSERT(response.session);
-        SendMyMessage(response.session, kCancelMatchMessage, response.error_code,
-                      response.error_message, response.data);
+        SendMyMessage(response.session, kCancelMatchMessage,
+            response.error_code, response.error_message, response.data);
       };
 
   // 이후 과정은 matchmaking_helper.cc 를 참고하세요.

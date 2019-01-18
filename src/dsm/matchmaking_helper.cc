@@ -5,6 +5,7 @@
 // consent of iFunFactory Inc.
 
 #include "matchmaking_helper.h"
+#include "matchmaking_server_wrapper.h"
 
 #include <funapi.h>
 
@@ -184,6 +185,36 @@ void OnMatchProgressUpdated(const string &account_id,
   LOG(INFO) << ss.str();
 }
 
+
+void SpawnOrSendUser(const string &account_id,
+                     const Json &user_data,
+                     const int64_t match_type) {
+  LOG_ASSERT(match_type == kNoMatching);
+
+  // 1. 사람이 없고 인원이 부족한 서버를 찾아 난입을 시도합니다.
+  // 2. 난입에 실패한 경우 새 서버를 생성합니다.
+
+  DedicatedServerHelper::SendUserCallback cb =
+      [account_id, user_data](bool succeed) {
+        // 난입에 실패했습니다. 새 서버를 생성합니다.
+        // 재시도를 하거나, 실패처리할 수 있습니다.
+        if (not succeed) {
+          LOG(INFO) << "Spawning a new dedicated server for: account_id="
+                    << account_id;
+          DedicatedServerHelper::SpawnDedicatedServer(account_id, user_data);
+          return;
+        }
+
+        // 매치 참여에 성공했습니다. 데디케이티드 서버 리다이렉션 메시지는 엔진 내부의
+        // 서버 오케스트레이터에서 자동으로 보내기 때문에 처리할 필요가 없습니다.
+        // 게임 로직에 따라서는 아래 메시지 전송이 불필요할 수 있습니다.
+        // 이 예제에서는 단순히 클라이언트에게 매치 참여 완료 메시지만 전달합니다.
+      };
+
+  LOG(INFO) << "Trying to send user: account_id=" << account_id;
+  DedicatedServerHelper::SendUser(match_type, account_id, user_data, cb);
+}
+
 }  // unnamed namespace
 
 
@@ -283,8 +314,13 @@ void MatchmakingHelper::ProcessSpawnOrMatchmaking(
     return;
   }
 
+  // 매치메이킹 없이 스폰을 진행하는 타입이면, 즉시 스폰을 시작합니다.
+  // 매치메이킹은 2명 이상인 경우에만 동작한다는 점에 주의해주세요.
+  // 1명이 매치메이킹 큐에 들어가면 매치메이킹 콜백을 호출하지 않습니다.
+  // 연습 게임 또는 데디케이티드 서버 내부에서 사람을 채운 후 게임을 시작할 때
+  // 이러한 방식을 사용할 수 있습니다.
   if (match_type == kNoMatching) {
-    DedicatedServerHelper::SpawnDedicatedServer(account_id, user_data);
+    SpawnOrSendUser(account_id, user_data, match_type);
     return;
   }
 

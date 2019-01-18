@@ -27,6 +27,12 @@ class MatchmakingHelper {
       const Json &message,
       const SessionResponseHandler &handler);
 
+  // 매치메이킹 없이 바로 게임에 참여를 시도합니다.
+  static void JoinMatch(
+      const Ptr<Session> &session,
+      const Json &message,
+      const SessionResponseHandler &handler);
+
   // 이 세션으로 요청한 매칭이 있으면 취소하는 함수
   // 로그아웃 상태에서도 사용할 수 있습니다.
   static void CancelMatchmaking(const Ptr<Session> &session);

@@ -144,17 +144,7 @@ MatchmakingServer::MatchState CheckMatchRequirements(
   // 매치 완료 조건 검사 핸들러 함수입니다.
   //
 
-  size_t total_players_for_match = 0;
-  if (match.type == kMatch1vs1) {
-    total_players_for_match = 2;
-  } else if (match.type == kMatch3v3) {
-    total_players_for_match = 6;
-  } else if (match.type == kMatch6v6) {
-    total_players_for_match = 12;
-  }
-
-  // 위 조건과 다른 매치 타입이 들어올 수 없으므로 이를 검사합니다.
-  LOG_ASSERT(total_players_for_match != 0);
+  size_t total_players_for_match = GetNumberOfMaxPlayers(match.type);
 
   // 총 플레이어 수가 매치 완료 조건에 부합하는 지 검사합니다.
   if (match.players.size() != total_players_for_match) {

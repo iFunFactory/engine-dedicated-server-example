@@ -152,19 +152,41 @@ void SimpleBotClient::Uninstall() {
 void SimpleBotClient::Start() {
   LOG_ASSERT(the_bot_clients != 0);
 
-  for (int index = 0; index < the_bot_clients; ++index) {
-    LOG(INFO) << "[BOT] Connecting: index=" << index
-              << ", host=" << FLAGS_dsm_server_host
-              << ", port=" << FLAGS_dsm_server_port;
-    Ptr<funtest::Session> session = funtest::Session::Create();
+#if 0
+// 봇을 한 번에 모두 실행합니다.
+for (int index = 0; index < the_bot_clients; ++index) {
+  LOG(INFO) << "[BOT] Connecting: index=" << index
+            << ", host=" << FLAGS_dsm_server_host
+            << ", port=" << FLAGS_dsm_server_port;
+  Ptr<funtest::Session> session = funtest::Session::Create();
 
-    // 연결 후 세션 인덱스를 식별하기 위해 세션 컨텍스트에 저장합니다.
-    Json &context = session->GetContext();
-    context[kClientIndex] = index;
+  // 연결 후 세션 인덱스를 식별하기 위해 세션 컨텍스트에 저장합니다.
+  Json &context = session->GetContext();
+  context[kClientIndex] = index;
 
-    session->ConnectTcp(
-        FLAGS_dsm_server_host, FLAGS_dsm_server_port, kJsonEncoding);
-  }
+  session->ConnectTcp(
+      FLAGS_dsm_server_host, FLAGS_dsm_server_port, kJsonEncoding);
+}
+#else
+// 봇을 2초 간격으로 실행합니다.
+for (int index = 0; index < the_bot_clients; ++index) {
+  Timer::ExpireAfter(
+      WallClock::FromSec(index*2),
+      [index](const Timer::Id &, const WallClock::Value &) {
+        LOG(INFO) << "[BOT] Connecting: index=" << index
+                  << ", host=" << FLAGS_dsm_server_host
+                  << ", port=" << FLAGS_dsm_server_port;
+        Ptr<funtest::Session> session = funtest::Session::Create();
+
+        // 연결 후 세션 인덱스를 식별하기 위해 세션 컨텍스트에 저장합니다.
+        Json &context = session->GetContext();
+        context[kClientIndex] = index;
+
+        session->ConnectTcp(
+            FLAGS_dsm_server_host, FLAGS_dsm_server_port, kJsonEncoding);
+      });
+}
+#endif
 }
 
 }  // namespace bot

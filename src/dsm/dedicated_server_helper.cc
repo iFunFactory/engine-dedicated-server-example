@@ -18,13 +18,32 @@ namespace dsm {
 
 namespace {
 
+const char *kMatchType = "match_type";
+
+// 현재 진행중인 매치를 관리합니다. 이 정보는 난입할 수 있는 서버를
+// 조사할 때 사용합니다. 게임 서버가 한 대 이상인 경우 Redis 와 같은 곳에
+// 키를 두고 매치 정보를 저장해야 합니다.
+
+struct MyMatchInfo {
+  Uuid match_id;
+  int64_t match_type;
+  Json match_data;
+  std::set<string /*player_id*/> players;
+};
+
+boost::mutex the_match_mutex;
+std::map<Uuid /*match_id*/, MyMatchInfo> match_map;
+std::map<int64_t /*match_type*/, std::set<Uuid>> match_type_map;
+
 
 SessionResponseHandler the_response_handler;
 
 
 void OnDedicatedServerSpawned(const Uuid &match_id,
                               const std::vector<string> &account_ids,
-                              bool success) {
+                              bool success,
+                              const Json &match_data,
+                              int64_t match_type) {
   LOG_ASSERT(the_response_handler);
 
   //
@@ -52,6 +71,12 @@ void OnDedicatedServerSpawned(const Uuid &match_id,
   LOG(INFO) << "OnDedicatedServerSpawned"
             << ": match_id=" << match_id
             << ", success=" << (success ? "succeed" : "failed");
+  if (success) {
+    boost::mutex::scoped_lock lock(the_match_mutex);
+    MyMatchInfo info { match_id, match_type, match_data };
+    LOG_ASSERT(match_map.emplace(match_id, info).second);
+    LOG_ASSERT(match_type_map[match_type].emplace(match_id).second);
+  }
 
   for (auto &account_id : account_ids) {
     // 각 클라이언트가 데디케이티드 서버로 접속하기 전에 처리해야 할 것이
@@ -80,11 +105,49 @@ void OnDedicatedServerSpawned(const Uuid &match_id,
 }
 
 
+void OnUserSent(const Uuid &match_id,
+                const std::vector<string> &account_ids,
+                bool success,
+                const Json &match_data,
+                int64_t match_type,
+                const DedicatedServerHelper::SendUserCallback &cb) {
+  LOG_ASSERT(cb);
+
+  // 난입 결과를 는 콜백 핸들러입니다.
+  // 데디케이티드 서버 매니저는 이 콜백 함수가 끝나는 즉시 클라이언트에게 데디케이티드
+  // 서버 접속 메시지를 보냅니다. 즉, 데디케이티드 서버 매니저는 이 콜백 함수를 호출하는
+  // 시점에서 클라이언트가 데디케이티드 서버가 연결하기 전이라는 것을 보장합니다.
+
+  LOG(INFO) << "OnUserSent"
+            << ": match_id=" << match_id
+            << ", success=" << (success ? "succeed" : "failed");
+  cb(success);
+  for (auto &account_id : account_ids) {
+    // 각 클라이언트가 데디케이티드 서버로 접속하기 전에 처리해야 할 것이
+    // 있을 경우, 이 곳에서 처리해야 합니다.
+    const Ptr<Session> &session = AccountManager::FindLocalSession(account_id);
+    if (not session) {  // session = Session::kNullPtr
+      // 다른 곳 또는 사용자가 세션을 닫거나 로그아웃 한 상태입니다.
+      return;
+    }
+  }
+}
+
+
 void OnJoinedCallbackPosted(const Uuid &match_id,
                             const string &account_id) {
   LOG(INFO) << "OnJoinedCallbackPosted"
             << ": match_id=" << to_string(match_id)
             << ", account_id=" << account_id;
+
+  // 누군가 데디케이티드 서버로 접속했습니다(SendJoin 함수를 호출했습니다).
+  // 유저를 추가합니다.
+  {
+    boost::mutex::scoped_lock lock(the_match_mutex);
+    auto itr = match_map.find(match_id);
+    LOG_ASSERT(itr != match_map.end());
+    itr->second.players.emplace(account_id);
+  }
 }
 
 
@@ -93,6 +156,15 @@ void OnLeftCallbackPosted(const Uuid &match_id,
   LOG(INFO) << "OnLeftCallbackPosted"
             << ": match_id=" << to_string(match_id)
             << ", account_id=" << account_id;
+
+  // 누군가 데디케이티드 서버에서 나갔습니다(SendLeft 함수를 호출했습니다).
+  // 유저를 제거합니다.
+  {
+    boost::mutex::scoped_lock lock(the_match_mutex);
+    auto itr = match_map.find(match_id);
+    LOG_ASSERT(itr != match_map.end());
+    itr->second.players.erase(account_id);
+  }
 }
 
 
@@ -101,6 +173,7 @@ void OnCustomCallbackPosted(const Uuid &match_id,
   LOG(INFO) << "OnCustomCallbackPosted"
             << ": match_id=" << to_string(match_id)
             << ", data=" << data.ToString(false);
+  // 데디케이티드 서버에서 CustomCallback 을 호출했습니다.
 }
 
 
@@ -111,6 +184,17 @@ void OnMatchResultPosted(const Uuid &match_id,
             << ": match_id=" << to_string(match_id)
             << ", success=" << (success ? "true" : "false")
             << ", match_data=" << match_data.ToString(false);
+
+  // 데디케이티드 서버에서 게임이 끝났고 결과를 받았습니다.
+  // match_data 를 필요게 맞게 가공해 데이터베이스에 저장하거나 할 수 있습니다.
+  {
+    boost::mutex::scoped_lock lock(the_match_mutex);
+    auto itr = match_map.find(match_id);
+    LOG_ASSERT(itr != match_map.end());
+
+    match_map.erase(match_id);
+    match_type_map[itr->second.match_type].erase(match_id);
+  }
 }
 
 }  // unnamed namespace
@@ -143,7 +227,7 @@ void DedicatedServerHelper::SpawnDedicatedServer(
   //
   // 이 예제에서는 매치 타입에 따른 데이터를 넣습니다.
   Json match_data;
-  match_data["type"] = kNoMatching;
+  match_data[kMatchType] = kNoMatching;
 
   // 3. 데디케이티드 서버 인자
   // 데디케이티드 서버 프로세스 실행 시 함께 넘겨 줄 인자를 설정합니다.
@@ -191,7 +275,8 @@ void DedicatedServerHelper::SpawnDedicatedServer(
   // 데디케이티드 서버
   DedicatedServerManager::Spawn(
       match_id, match_data, dedicated_server_args,
-      account_ids, user_data_list, OnDedicatedServerSpawned);
+      account_ids, user_data_list,
+      bind(&OnDedicatedServerSpawned, _1, _2, _3, match_data, kNoMatching));
 }
 
 
@@ -221,7 +306,7 @@ void DedicatedServerHelper::SpawnDedicatedServer(
   //
   // 이 예제에서는 매치 타입에 따른 데이터를 넣습니다.
   Json match_data;
-  match_data["type"] = match.type;
+  match_data[kMatchType] = match.type;
 
   // 3. 데디케이티드 서버 인자
   // 데디케이티드 서버 프로세스 실행 시 함께 넘겨 줄 인자를 설정합니다.
@@ -275,7 +360,71 @@ void DedicatedServerHelper::SpawnDedicatedServer(
   // 데디케이티드 서버
   DedicatedServerManager::Spawn(
       match_id, match_data, dedicated_server_args,
-      account_ids, user_data_list, OnDedicatedServerSpawned);
+      account_ids, user_data_list,
+      bind(&OnDedicatedServerSpawned, _1, _2, _3, match_data, match.type));
+}
+
+
+void DedicatedServerHelper::SendUser(
+    int64_t match_type,
+    const string &account_id,
+    const Json &user_data,
+    const SendUserCallback &send_callback) {
+  LOG_ASSERT(IsValidMatchType(match_type));
+
+  bool found = false;
+  Uuid target_match_id;
+  Json target_match_data;
+
+  // 매치 타입과 일치하는 플레이어 수를 선택합니다.
+  size_t total_players_for_match = GetNumberOfMaxPlayers(match_type);
+
+  do {
+    boost::mutex::scoped_lock lock(the_match_mutex);
+
+    // 현재 활성화된 매치를 검사하여 플레이어가 부족한 서버를 찾습니다.
+    // 순서는 UUID 를 따르므로 별다른 우선 순위가 없습니다.
+    // 조금 더 공정한 절차가 필요하다면 MyMatchInfo 에 모든 플레이어 없이 게임을 진행한
+    // 시간을 기록한 후, 이를 기준으로 우선순위를 부여할 수 있습니다.
+    //
+    // 1. 먼저 매치 타입으로 매치 ID 맵을 가져옵니다.
+    auto type_itr = match_type_map.find(match_type);
+    if (type_itr == match_type_map.end()) {
+      break;
+    }
+
+    // 2. ID 에 해당하는 매치 목록을 순회하면서 필요한 플레이어보다 부족한
+    // 서버를 찾습니다.
+    auto itr = type_itr->second.begin();
+    auto itr_end = type_itr->second.end();
+    for (; itr != itr_end; ++itr) {
+      auto match_itr = match_map.find(*itr /*match_id*/);
+      LOG_ASSERT(match_itr != match_map.end());
+      if (match_itr->second.players.size() < total_players_for_match) {
+        // 서버를 찾았습니다.
+        target_match_id = match_itr->second.match_id;
+        target_match_data = match_itr->second.match_data;
+        found = true;
+        break;
+      }
+    }
+  } while (false);
+
+  if (not found) {
+    // 모든 서버가 매치에 필요한 플레이어를 확보했거나 서버가 없습니다.
+    // 더 이상 진행할 수 없습니다.
+    LOG(INFO) << "There's no available server to send user";
+    send_callback(false);
+  } else {
+    // 난입을 요청합니다.
+    std::vector<string> account_ids { account_id };
+    std::vector<Json> user_data_list { user_data };
+
+    DedicatedServerManager::SendUsers(
+        target_match_id, target_match_data, account_ids, user_data_list,
+        bind(&OnUserSent, _1, _2, _3,
+             target_match_data, match_type, send_callback));
+  }
 }
 
 
@@ -283,6 +432,7 @@ void DedicatedServerHelper::Install(
     const SessionResponseHandler &response_handler) {
   the_response_handler = response_handler;
 
+  // 아래 4개의 콜백은 모두 매치 ID로 직렬화하여 실행됩니다.
   DedicatedServerManager::RegisterMatchResultCallback(OnMatchResultPosted);
   DedicatedServerManager::RegisterUserEnteredCallback(OnJoinedCallbackPosted);
   DedicatedServerManager::RegisterUserLeftCallback(OnLeftCallbackPosted);
