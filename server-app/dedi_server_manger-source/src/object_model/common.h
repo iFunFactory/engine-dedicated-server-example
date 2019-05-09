@@ -343,10 +343,9 @@ MapRefBase<KeyType, ValueType>::MapRefBase(
 
 template <typename KeyType, typename ValueType>
 ValueType MapRefBase<KeyType, ValueType>::GetAt(const KeyType &key) const {
-  Ptr<AttributeValue> r =
-      owner_->GetMapElement(attribute_name_, AttributeValue(key));
-  LOG_IF(FATAL, not r) << "wrong key: " << key;
-  return ConvertTo<ValueType>(*r, lock_type_);
+  AttributeValue r = owner_->GetMapElement(attribute_name_, AttributeValue(key));
+  LOG_IF(FATAL, r.IsNull()) << "wrong key: " << key;
+  return ConvertTo<ValueType>(r, lock_type_);
 }
 
 
@@ -355,7 +354,7 @@ void MapRefBase<KeyType, ValueType>::SetAt(const KeyType &key, const ValueType &
   owner_->SetMapElement(
       attribute_name_,
       AttributeValue(key),
-      Ptr<AttributeValue>(new AttributeValue(ConvertTo<>(value))));
+      AttributeValue(ConvertTo<>(value)));
 }
 
 

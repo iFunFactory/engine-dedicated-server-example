@@ -210,7 +210,7 @@
           "redis_mode": "redis",
           "redis_servers": {
             "": {
-              "address": "10.10.2.250:6379",
+              "address": "127.0.0.1:6379",
               "database": 0,
               "auth_pass": ""
             }
