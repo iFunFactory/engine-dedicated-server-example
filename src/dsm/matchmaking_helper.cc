@@ -298,7 +298,7 @@ void MatchmakingHelper::ProcessSpawnOrMatchmaking(
   // 다음과 같습니다.
   //   "user_data": {
   //      "level": 70,
-  //      "ranking_score": 1500,
+  //      "mmr_score": 1500,
   //      "req_time": 1544167339,
   //      ...
   //   },

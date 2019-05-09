@@ -145,7 +145,12 @@ void OnJoinedCallbackPosted(const Uuid &match_id,
   {
     boost::mutex::scoped_lock lock(the_match_mutex);
     auto itr = match_map.find(match_id);
-    LOG_ASSERT(itr != match_map.end());
+    if (itr == match_map.end()) {
+      // 끝난 게임의 match_id로 호출했습니다.(OnMatchResultPosted가 호출된 후)
+      LOG(WARNING) << "Match does not exist."
+                   << ": match_id=" << to_string(match_id);
+      return;
+    }
     itr->second.players.emplace(account_id);
   }
 }
@@ -162,7 +167,12 @@ void OnLeftCallbackPosted(const Uuid &match_id,
   {
     boost::mutex::scoped_lock lock(the_match_mutex);
     auto itr = match_map.find(match_id);
-    LOG_ASSERT(itr != match_map.end());
+    if (itr == match_map.end()) {
+      // 끝난 게임의 match_id로 호출했습니다.(OnMatchResultPosted가 호출된 후)
+      LOG(WARNING) << "Match does not exist."
+                   << ": match_id=" << to_string(match_id);
+      return;
+    }
     itr->second.players.erase(account_id);
   }
 }
