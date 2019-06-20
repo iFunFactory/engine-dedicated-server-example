@@ -1,67 +1,27 @@
-// Copyright (C) 2013-2018 iFunFactory Inc. All Rights Reserved.
+// Copyright (C) 2013-2017 iFunFactory Inc. All Rights Reserved.
 //
 // This work is confidential and proprietary to iFunFactory Inc. and
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
-#ifndef FUNAPI_UE4_PLATFORM_PS4
-
-#ifdef FUNAPI_UE4
 #include "FunapiPrivatePCH.h"
-#endif
+
+#ifdef FUNAPI_UE4_PLATFORM_PS4
 
 #include "funapi_socket.h"
+#include "funapi_plugin.h"
 #include "funapi_utils.h"
 
-#ifdef FUNAPI_UE4
-#if PLATFORM_WINDOWS
-#include "WindowsHWrapper.h"
-#include "AllowWindowsPlatformTypes.h"
-#endif
-// Work around a conflict between a UI namespace defined by engine code and a typedef in OpenSSL
 #define UI UI_ST
 THIRD_PARTY_INCLUDES_START
-#if FUNAPI_UE4_PLATFORM_ANDROID == 0
 #include "openssl/ssl.h"
 #include "openssl/err.h"
-#else // FUNAPI_UE4_PLATFORM_ANDROID
-// 안드로이드 환경일떄 랩핑된 openssl 을 사용한다.
-#include "openssl/openssl_wrapper.h"
-
-#define SSL_CTX_new Fun_SSL_CTX_new
-#define SSL_new Fun_SSL_new
-#define SSL_set_fd Fun_SSL_set_fd
-#define SSL_library_init Fun_SSL_library_init
-#define SSL_shutdown Fun_SSL_shutdown
-#define SSL_free Fun_SSL_free
-#define SSL_CTX_free Fun_SSL_CTX_free
-#define SSL_connect Fun_SSL_connect
-#define SSL_write Fun_SSL_write
-#define SSL_read Fun_SSL_read
-#define SSLv23_client_method Fun_SSLv23_client_method
-#define SSL_get_current_cipher Fun_SSL_get_current_cipher
-#define SSL_CIPHER_get_name Fun_SSL_CIPHER_get_name
-#define SSL_CTX_load_verify_locations Fun_SSL_CTX_load_verify_locations
-#define SSL_CTX_set_verify Fun_SSL_CTX_set_verify
-#define SSL_CTX_set_verify_depth Fun_SSL_CTX_set_verify_depth
-#define SSL_get_verify_result Fun_SSL_get_verify_result
-#define SSL_get_peer_certificate Fun_SSL_get_peer_certificate
-#define SSL_get_error Fun_SSL_get_error
-#define ERR_error_string Fun_ERR_error_string
-#define SSL_load_error_strings Fun_SSL_load_error_strings
-#define ERR_get_error Fun_ERR_get_error
-#endif // FUNAPI_UE4_PLATFORM_ANDROID
 THIRD_PARTY_INCLUDES_END
-#ifdef UI
 #undef UI
-#endif
-#if PLATFORM_WINDOWS
-#include "HideWindowsPlatformTypes.h"
-#endif
-#else // FUNAPI_UE4
-#include "openssl/ssl.h"
-#include "openssl/err.h"
-#endif // FUNAPI_UE4
+
+// PS4
+#include <net.h>
+#include <libssl.h>
 
 namespace fun {
 
@@ -75,12 +35,13 @@ class FunapiAddrInfoImpl : public std::enable_shared_from_this<FunapiAddrInfoImp
 
   fun::string GetString();
 
-  struct addrinfo* GetAddrInfo();
-  void SetAddrInfo(struct addrinfo* info);
+  SceNetSockaddrIn GetAddrInfo();
+  void SetAddrInfo(const SceNetSockaddrIn &info);
 
  private:
-  struct addrinfo *addrinfo_res_ = nullptr;
+  SceNetSockaddrIn addrinfo_res_;
 };
+
 
 FunapiAddrInfoImpl::FunapiAddrInfoImpl() {
 }
@@ -91,36 +52,27 @@ FunapiAddrInfoImpl::~FunapiAddrInfoImpl() {
 }
 
 
-void FunapiAddrInfoImpl::SetAddrInfo(struct addrinfo* info) {
+void FunapiAddrInfoImpl::SetAddrInfo(const SceNetSockaddrIn &info) {
   addrinfo_res_ = info;
 }
 
 
-struct addrinfo* FunapiAddrInfoImpl::GetAddrInfo() {
+SceNetSockaddrIn FunapiAddrInfoImpl::GetAddrInfo() {
   return addrinfo_res_;
 }
 
 
 fun::string FunapiAddrInfoImpl::GetString() {
-  auto info = addrinfo_res_;
+  auto sin = addrinfo_res_;
 
-  if (info) {
-    char addrStr[INET6_ADDRSTRLEN];
-    if (info->ai_family == AF_INET)
-    {
-      struct sockaddr_in *sin = (struct sockaddr_in*) info->ai_addr;
-      inet_ntop(info->ai_family, (void*)&sin->sin_addr, addrStr, sizeof(addrStr));
-    }
-    else if (info->ai_family == AF_INET6)
-    {
-      struct sockaddr_in6 *sin = (struct sockaddr_in6*) info->ai_addr;
-      inet_ntop(info->ai_family, (void*)&sin->sin6_addr, addrStr, sizeof(addrStr));
-    }
+  char addrStr[SCE_NET_INET_ADDRSTRLEN];
 
-    return fun::string(addrStr);
+  if (sceNetInetNtop(SCE_NET_AF_INET,
+    &sin.sin_addr, addrStr, sizeof(addrStr)) == NULL) {
+    return "NULL";
   }
 
-  return "NULL";
+  return fun::string(addrStr);
 }
 
 
@@ -132,7 +84,7 @@ class FunapiSocketImpl : public std::enable_shared_from_this<FunapiSocketImpl> {
   FunapiSocketImpl();
   virtual ~FunapiSocketImpl();
 
-  static fun::string GetStringFromAddrInfo(struct addrinfo *info);
+  static fun::string GetStringFromAddrInfo(const SceNetSockaddrIn &sin);
 
   static fun::vector<std::weak_ptr<FunapiSocketImpl>> vec_sockets_;
   static std::mutex vec_sockets_mutex_;
@@ -157,42 +109,33 @@ class FunapiSocketImpl : public std::enable_shared_from_this<FunapiSocketImpl> {
                     fun::string &error_string);
   void FreeAddrInfo();
 
-  bool InitSocket(struct addrinfo *info,
+  bool InitSocket(int socktype,
                   int &error_code,
                   fun::string &error_string);
   void CloseSocket();
 
-  void SocketSelect(fd_set rset,
-                    fd_set wset,
-                    fd_set eset);
+  void SocketSelect(const fd_set rset,
+                    const fd_set wset,
+                    const fd_set eset);
 
   virtual void OnSend() = 0;
   virtual void OnRecv() = 0;
 
-  int socket_ = -1;
-  struct addrinfo *addrinfo_ = nullptr;
-  struct addrinfo *addrinfo_res_ = nullptr;
+  SceNetId socket_ = -1;
+  SceNetSockaddrIn addrinfo_;
+  SceNetSockaddrIn addrinfo_res_;
 };
 
 
-fun::string FunapiSocketImpl::GetStringFromAddrInfo(struct addrinfo *info) {
-  if (info) {
-    char addrStr[INET6_ADDRSTRLEN];
-    if (info->ai_family == AF_INET)
-    {
-      struct sockaddr_in *sin = (struct sockaddr_in*) info->ai_addr;
-      inet_ntop(info->ai_family, (void*)&sin->sin_addr, addrStr, sizeof(addrStr));
-    }
-    else if (info->ai_family == AF_INET6)
-    {
-      struct sockaddr_in6 *sin = (struct sockaddr_in6*) info->ai_addr;
-      inet_ntop(info->ai_family, (void*)&sin->sin6_addr, addrStr, sizeof(addrStr));
-    }
+fun::string FunapiSocketImpl::GetStringFromAddrInfo(const SceNetSockaddrIn &sin) {
+  char addrStr[SCE_NET_INET_ADDRSTRLEN];
 
-    return fun::string(addrStr);
+  if (sceNetInetNtop(SCE_NET_AF_INET,
+    &sin.sin_addr, addrStr, sizeof(addrStr)) == NULL) {
+    return "NULL";
   }
 
-  return "NULL";
+  return fun::string(addrStr);
 }
 
 
@@ -299,9 +242,6 @@ bool FunapiSocketImpl::IsReadySelect() {
 
 
 void FunapiSocketImpl::FreeAddrInfo() {
-  if (addrinfo_) {
-    freeaddrinfo(addrinfo_);
-  }
 }
 
 
@@ -310,97 +250,120 @@ bool FunapiSocketImpl::InitAddrInfo(int socktype,
                                     const int port,
                                     int &error_code,
                                     fun::string &error_string) {
-#ifdef FUNAPI_COCOS2D_PLATFORM_WINDOWS
-  static auto wsa_init = FunapiInit::Create([](){
-    WSADATA wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData);
-  }, [](){
-    WSACleanup();
-  });
-#endif
+  SceNetSockaddrIn sin;
+  memset(&sin, 0, sizeof(sin));
+  sin.sin_len = sizeof(sin);
+  sin.sin_family = SCE_NET_AF_INET;
+  if (sceNetInetPton(SCE_NET_AF_INET, hostname_or_ip, &sin.sin_addr) == 0) {
+    bool is_failed = false;
+    char temp_buffer[1024];
+    temp_buffer[0] = 0;
 
-  struct addrinfo hints;
+    SceNetInAddr *addr = &sin.sin_addr;
+    SceNetId rid = -1;
+    int memid = -1;
+    int ret;
 
-  fun::stringstream ss_port;
-  ss_port << static_cast<int>(port);
+    if (false == is_failed) {
+      ret = sceNetPoolCreate(__FUNCTION__, 4 * 1024, 0);
+      if (ret < 0) {
+        sprintf(temp_buffer, "sceNetPoolCreate() failed (0x%x errno=%d)\n",
+          ret, sce_net_errno);
+        is_failed = true;
+      }
+    }
 
-  memset(&hints, 0, sizeof(hints));
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = socktype;
-  error_code = getaddrinfo(hostname_or_ip, ss_port.str().c_str(), &hints, &addrinfo_);
-  if (error_code) {
-    error_string = (char*)gai_strerror(error_code);
-    return false;
+    if (false == is_failed) {
+      memid = ret;
+      ret = sceNetResolverCreate("resolver", memid, 0);
+      if (ret < 0) {
+        sprintf(temp_buffer, "sceNetResolverCreate() failed (0x%x errno=%d)\n",
+          ret, sce_net_errno);
+        is_failed = true;
+      }
+    }
+
+    if (false == is_failed) {
+      rid = ret;
+      ret = sceNetResolverStartNtoa(rid, hostname_or_ip, addr, 0, 0, 0);
+      if (ret < 0) {
+        sprintf(temp_buffer, "sceNetResolverStartNtoa() failed (0x%x errno=%d)\n",
+          ret, sce_net_errno);
+        is_failed = true;
+      }
+    }
+
+    if (false == is_failed) {
+      ret = sceNetResolverDestroy(rid);
+      if (ret < 0) {
+        sprintf(temp_buffer, "sceNetResolverDestroy() failed (0x%x errno=%d)\n",
+          ret, sce_net_errno);
+        is_failed = true;
+      }
+    }
+
+    if (false == is_failed) {
+      ret = sceNetPoolDestroy(memid);
+      if (ret < 0) {
+        sprintf(temp_buffer, "sceNetPoolDestroy() failed (0x%x errno=%d)\n",
+          ret, sce_net_errno);
+        is_failed = true;
+      }
+    }
+
+    if (is_failed) {
+      sceNetResolverDestroy(rid);
+      sceNetPoolDestroy(memid);
+
+      error_code = sce_net_errno;
+      error_string = temp_buffer;
+
+      return false;
+    }
   }
+
+  sin.sin_port = sceNetHtons(port);
+
+  addrinfo_ = sin;
 
   return true;
 }
 
 
 void FunapiSocketImpl::CloseSocket() {
-  // DebugUtils::Log("%s", __FUNCTION__);
-
   if (socket_ >= 0) {
     // DebugUtils::Log("Socket [%d] closed.", socket_);
 
-#ifdef FUNAPI_PLATFORM_WINDOWS
-    closesocket(socket_);
-#else
-    close(socket_);
-#endif
+    sceNetSocketClose(socket_);
+
     socket_ = -1;
   }
 }
 
 
-bool FunapiSocketImpl::InitSocket(struct addrinfo *info,
+bool FunapiSocketImpl::InitSocket(int socktype,
                                   int &error_code,
                                   fun::string &error_string) {
-  if (!info) {
+  auto s = sceNetSocket(__FUNCTION__, SCE_NET_AF_INET, socktype, 0);
+  if (s < 0) {
+    char temp_buffer[1024];
+    sprintf(temp_buffer, "sceNetSocket() failed (errno=%d)\n", sce_net_errno);
+
+    error_string = temp_buffer;
+    error_code = sce_net_errno;
+
     return false;
   }
 
-  int fd = -1;
-
-  for (addrinfo_res_ = info;addrinfo_res_;addrinfo_res_ = addrinfo_res_->ai_next) {
-    fd = socket(addrinfo_res_->ai_family,
-                addrinfo_res_->ai_socktype,
-                addrinfo_res_->ai_protocol);
-    if (fd < 0) {
-      switch errno {
-      case EAFNOSUPPORT:
-      case EPROTONOSUPPORT:
-        if (addrinfo_res_->ai_next)
-          continue;
-        else {
-          break;
-        }
-
-      default:
-        /* handle other socket errors */
-        ;
-      }
-    }
-    else {
-      break;
-    }
-  }
-
-  if (fd < 0) {
-    error_code = FunapiUtil::GetSocketErrorCode();
-    error_string = FunapiUtil::GetSocketErrorString(error_code);
-    return false;
-  }
-
-  socket_ = fd;
+  socket_ = s;
 
   return true;
 }
 
 
-void FunapiSocketImpl::SocketSelect(fd_set rset,
-                                    fd_set wset,
-                                    fd_set eset) {
+void FunapiSocketImpl::SocketSelect(const fd_set rset,
+                                    const fd_set wset,
+                                    const fd_set eset) {
   if (socket_ > 0) {
     if (FD_ISSET(socket_, &rset)) {
       OnRecv();
@@ -443,17 +406,17 @@ class FunapiTcpImpl : public FunapiSocketImpl {
                const time_t connect_timeout_seconds,
                const bool disable_nagle,
                const bool use_tls,
-               const fun::string &cert_file_path,
+               const fun::string &cert,
                const ConnectCompletionHandler &connect_completion_handler,
                const SendHandler &send_handler,
                const RecvHandler &recv_handler);
 
-  void Connect(struct addrinfo *addrinfo_res,
-               const ConnectCompletionHandler &connect_completion_handler);
+  void Connect(SceNetSockaddrIn addrinfo_res,
+               ConnectCompletionHandler connect_completion_handler);
 
-  void Connect(struct addrinfo *addrinfo_res);
+  void Connect(SceNetSockaddrIn addrinfo_res);
 
-  bool Send(const fun::vector<uint8_t> &body, const SendCompletionHandler &send_handler);
+  bool Send(const fun::vector<uint8_t> &body, SendCompletionHandler send_handler);
 
   bool IsReadySelect();
 
@@ -462,17 +425,14 @@ class FunapiTcpImpl : public FunapiSocketImpl {
                            int &error_code,
                            fun::string &error_string);
 
-  void SocketSelect(fd_set rset,
-                    fd_set wset,
-                    fd_set eset);
+  void SocketSelect(const fd_set rset,
+                    const fd_set wset,
+                    const fd_set eset);
 
   void OnConnectCompletion(const bool is_failed,
                            const bool is_timed_out,
                            const int error_code,
                            const fun::string &error_string);
-
-  void OnConnectCompletion(const bool is_failed,
-                           const bool is_timed_out);
 
   bool ConnectTLS();
   void CleanupSSL();
@@ -500,9 +460,7 @@ class FunapiTcpImpl : public FunapiSocketImpl {
   int offset_ = 0;
   time_t connect_timeout_seconds_ = 5;
 
-  // https://curl.haxx.se/docs/caextract.html
-  // https://curl.haxx.se/ca/cacert.pem
-  fun::string cert_file_path_;
+  fun::string ca_cert_;
   bool use_tls_ = false;
 
   SSL_CTX *ctx_ = nullptr;
@@ -554,22 +512,16 @@ bool FunapiTcpImpl::IsReadySelect() {
 }
 
 
-void FunapiTcpImpl::Connect(struct addrinfo *addrinfo_res) {
+void FunapiTcpImpl::Connect(SceNetSockaddrIn addrinfo_res) {
   addrinfo_res_ = addrinfo_res;
 
   socket_select_state_ = SocketSelectState::kNone;
 
-  int rc = connect(socket_,addrinfo_res_->ai_addr, addrinfo_res_->ai_addrlen);
-  if (rc != 0 && errno != EINPROGRESS) {
-    OnConnectCompletion(true, false);
+  int rc = sceNetConnect(socket_, (SceNetSockaddr *)&addrinfo_res_,sizeof(addrinfo_res_));
+  if (rc < 0 && sce_net_errno != SCE_NET_EINPROGRESS) {
+    OnConnectCompletion(true, false, sce_net_errno, "");
     return;
   }
-#ifndef FUNAPI_PLATFORM_WINDOWS
-  if (rc == 0) {
-    OnConnectCompletion(true, true);
-    return;
-  }
-#endif
 
   fd_set rset;
   fd_set wset;
@@ -583,61 +535,45 @@ void FunapiTcpImpl::Connect(struct addrinfo *addrinfo_res) {
   FD_SET(socket_, &wset);
   FD_SET(socket_, &eset);
 
-  struct timeval timeout = { static_cast<long>(connect_timeout_seconds_), 0 };
+  struct timeval timeout = { connect_timeout_seconds_, 0 };
   rc = select(socket_+1, &rset, &wset, &eset, &timeout);
   if (rc < 0) {
     // select failed
-    OnConnectCompletion(true, false);
+    OnConnectCompletion(true, false, sce_net_errno, "");
   }
   else if (rc == 0) {
     // connect timed out
-    OnConnectCompletion(true, true);
+    OnConnectCompletion(true, true, sce_net_errno, "");
   }
   else {
-#ifdef FUNAPI_PLATFORM_WINDOWS
-    if (!FD_ISSET(socket_, &rset) && !FD_ISSET(socket_, &wset)) {
-      OnConnectCompletion(true, false, 0, "");
-      return;
-    }
-
-    if (FD_ISSET(socket_, &eset)) {
-      OnConnectCompletion(true, false, 0, "");
-      return;
-    }
-
-    OnConnectCompletion(false, false, 0, "");
-#else
-    int e = 0;
-    socklen_t e_size = sizeof(e);
+    int err;
+    SceNetSocklen_t optlen = sizeof(err);
 
     if (!FD_ISSET(socket_, &rset) && !FD_ISSET(socket_, &wset)) {
       OnConnectCompletion(true, false, 0, "");
       return;
     }
 
-    if (getsockopt(socket_, SOL_SOCKET, SO_ERROR, &e, &e_size) < 0) {
-      OnConnectCompletion(true, false, e, strerror(e));
+    // obtains a pending error value
+    // SCE_NET_SO_ERROR optval datatype is int
+    if (sceNetGetsockopt(socket_, SCE_NET_SOL_SOCKET, SCE_NET_SO_ERROR, &err, &optlen) < 0) {
+      OnConnectCompletion(true, false, err, "sceNetGetsockopt() failed");
       return;
     }
 
-    if (e == 0) {
+    // Normal case
+    if (err == 0) {
       OnConnectCompletion(false, false, 0, "");
       return;
     }
 
-    if (e == 60) {
-      OnConnectCompletion(true, true, e, strerror(e));
-      return;
-    }
-
-    OnConnectCompletion(true, false, e, strerror(e));
-#endif // FUNAPI_PLATFORM_WINDOWS
+    OnConnectCompletion(true, false, err, "sceNetConnect() failed");
   }
 }
 
 
-void FunapiTcpImpl::Connect(struct addrinfo *addrinfo_res,
-                            const ConnectCompletionHandler &connect_completion_handler) {
+void FunapiTcpImpl::Connect(SceNetSockaddrIn addrinfo_res,
+                            ConnectCompletionHandler connect_completion_handler) {
   completion_handler_ = connect_completion_handler;
 
   Connect(addrinfo_res);
@@ -667,7 +603,7 @@ void FunapiTcpImpl::Connect(const char* hostname_or_ip,
                             const time_t connect_timeout_seconds,
                             const bool disable_nagle,
                             const bool use_tls,
-                            const fun::string &cert_file_path,
+                            const fun::string &cert,
                             const ConnectCompletionHandler &connect_completion_handler,
                             const SendHandler &send_handler,
                             const RecvHandler &recv_handler) {
@@ -679,7 +615,11 @@ void FunapiTcpImpl::Connect(const char* hostname_or_ip,
   }
 
   use_tls_ = use_tls;
-  cert_file_path_ = cert_file_path;
+  ca_cert_ = cert;
+
+  if (use_tls_) {
+    SSL_load_error_strings();
+  }
 
   send_handler_ = send_handler;
   recv_handler_ = recv_handler;
@@ -688,14 +628,14 @@ void FunapiTcpImpl::Connect(const char* hostname_or_ip,
   int error_code = 0;
   fun::string error_string;
 
-  if (!InitAddrInfo(SOCK_STREAM, hostname_or_ip, port, error_code, error_string)) {
+  if (!InitAddrInfo(SCE_NET_SOCK_STREAM, hostname_or_ip, port, error_code, error_string)) {
     OnConnectCompletion(true, false, error_code, error_string);
     return;
   }
 
   addrinfo_res_ = addrinfo_;
 
-  if (!InitSocket(addrinfo_res_, error_code, error_string)) {
+  if (!InitSocket(SCE_NET_SOCK_STREAM, error_code, error_string)) {
     OnConnectCompletion(true, false, error_code, error_string);
     return;
   }
@@ -717,30 +657,28 @@ void FunapiTcpImpl::Connect(const char* hostname_or_ip,
 
 
 bool FunapiTcpImpl::InitTcpSocketOption(bool disable_nagle, int &error_code, fun::string &error_string) {
-  // non-blocking.
-#ifdef FUNAPI_PLATFORM_WINDOWS
-  u_long argp = 0;
-  int flag = ioctlsocket(socket_, FIONBIO, &argp);
-  assert(flag >= 0);
-#else
-  int flag = fcntl(socket_, F_GETFL);
-  assert(flag >= 0);
-  int rc = fcntl(socket_, F_SETFL, O_NONBLOCK | flag);
-  assert(rc >= 0);
-#endif
+  char temp_buffer[1024];
+  int optval = 1;
+  int ret = sceNetSetsockopt(socket_, SCE_NET_SOL_SOCKET, SCE_NET_SO_NBIO, &optval, sizeof(optval));
 
-  // Disable nagle
+  if (ret < 0) {
+    sprintf(temp_buffer, "sceNetSetsockopt(SO_NBIO) failed (errno=%d)\n", sce_net_errno);
+
+    error_code = sce_net_errno;
+    error_string = temp_buffer;
+
+    return false;
+  }
+
   if (disable_nagle) {
-    int nagle_flag = 1;
-    int result = setsockopt(socket_,
-                            IPPROTO_TCP,
-                            TCP_NODELAY,
-                            reinterpret_cast<char*>(&nagle_flag),
-                            sizeof(int));
-    if (result < 0) {
-      // Error - TCP_NODELAY
-      error_code = FunapiUtil::GetSocketErrorCode();
-      error_string = FunapiUtil::GetSocketErrorString(error_code);
+    ret = sceNetSetsockopt(socket_, SCE_NET_IPPROTO_TCP, SCE_NET_TCP_NODELAY, &optval, sizeof(optval));
+
+    if (ret < 0) {
+      sprintf(temp_buffer, "sceNetSetsockopt(TCP_NODELAY) failed (errno=%d)\n", sce_net_errno);
+
+      error_code = sce_net_errno;
+      error_string = temp_buffer;
+
       return false;
     }
   }
@@ -751,13 +689,40 @@ bool FunapiTcpImpl::InitTcpSocketOption(bool disable_nagle, int &error_code, fun
 
 bool FunapiTcpImpl::ConnectTLS() {
   auto on_ssl_error_completion = [this]() {
-    SSL_load_error_strings();
-
     unsigned long error_code = ERR_get_error();
+
     char error_buffer[1024];
     ERR_error_string(error_code, (char *)error_buffer);
 
     OnConnectCompletion(true, false, static_cast<int>(error_code), error_buffer);
+  };
+
+  auto add_cert = [](SSL_CTX *ctx, const void* data, int len) -> bool {
+    BIO *bio;
+    X509 *cert = nullptr;
+
+    if ((bio = BIO_new(BIO_s_mem())) == NULL) {
+      return false;
+    }
+
+    BIO_write(bio, data, len);
+    cert = PEM_read_bio_X509_AUX(bio, NULL, NULL, NULL);
+    BIO_free(bio);
+
+    if (cert == NULL) {
+      return false;
+    }
+
+    X509_STORE *store;
+    store = SSL_CTX_get_cert_store((SSL_CTX *)ctx);
+    int ret = X509_STORE_add_cert(store, cert);
+    X509_free(cert);
+
+    if (ret == 0) {
+      return false;
+    }
+
+    return true;
   };
 
   static auto ssl_init = FunapiInit::Create([](){
@@ -780,18 +745,60 @@ bool FunapiTcpImpl::ConnectTLS() {
     return false;
   }
 
-  bool use_verify = false;
+  int ret = 0;
 
-  if (!cert_file_path_.empty()) {
-    if (!SSL_CTX_load_verify_locations(ctx_, cert_file_path_.c_str(), NULL)) {
+  // user root ca
+  if (!ca_cert_.empty()) {
+    if (false == add_cert(ctx_, ca_cert_.data(), ca_cert_.size())) {
       on_ssl_error_completion();
       return false;
     }
-    else {
-      SSL_CTX_set_verify(ctx_, SSL_VERIFY_PEER, NULL);
-      SSL_CTX_set_verify_depth(ctx_, 1);
+  }
 
-      use_verify = true;
+  // ps4 root ca
+  {
+    bool is_error = false;
+    char error_buffer[1024];
+
+    const int32 PS4_SSL_HEAP_SIZE = 256 * 1024;
+    int libssl_ctxid = sceSslInit(PS4_SSL_HEAP_SIZE);
+    if (libssl_ctxid < 0) {
+      sprintf(error_buffer, "sceSslInit() error: 0x%08X\n", libssl_ctxid);
+      is_error = true;
+    }
+
+    SceSslCaCerts caCerts;
+
+    if (false == is_error) {
+      memset(&caCerts, 0, sizeof(SceSslCaCerts));
+      ret = sceSslGetCaCerts(libssl_ctxid, &caCerts);
+      if (ret < 0) {
+        sprintf(error_buffer, "sceSslGetCaCerts() error: 0x%08X\n", ret);
+        is_error = true;
+      }
+    }
+
+    if (false == is_error) {
+      for (int i = 0; i < caCerts.certDataNum; ++i) {
+        SceSslData &temp_data = caCerts.certData[i];
+        if (false == add_cert(ctx_, temp_data.ptr, temp_data.size)) {
+          sprintf(error_buffer, "X509_STORE_add_cert() error");
+          is_error = true;
+        }
+      }
+    }
+
+    if (libssl_ctxid > -1) {
+      ret = sceSslTerm(libssl_ctxid);
+      if (ret < 0) {
+        sprintf(error_buffer, "sceSslTerm() error: 0x%08X\n", ret);
+        is_error = true;
+      }
+    }
+
+    if (is_error) {
+      OnConnectCompletion(true, false, static_cast<int>(0), error_buffer);
+      return false;
     }
   }
 
@@ -802,8 +809,8 @@ bool FunapiTcpImpl::ConnectTLS() {
     return false;
   }
 
-  int ret = SSL_set_fd(ssl_, socket_);
-  if (ret !=  1) {
+  ret = SSL_set_fd(ssl_, socket_);
+  if (ret != 1) {
     on_ssl_error_completion();
     return false;
   }
@@ -827,30 +834,33 @@ bool FunapiTcpImpl::ConnectTLS() {
     }
   }
 
-  if (use_verify) {
-    if (SSL_get_peer_certificate(ssl_) != NULL)
+  // verify server certificate
+  {
+    bool is_error = false;
+
+    X509* cert = SSL_get_peer_certificate(ssl_);
+
+    if (cert != NULL)
     {
-      if (SSL_get_verify_result(ssl_) != X509_V_OK) {
-        on_ssl_error_completion();
-        return false;
+      X509_free(cert);
+
+      ret = SSL_get_verify_result(ssl_);
+      if (ret != X509_V_OK) {
+        is_error = true;
       }
     }
     else {
-      on_ssl_error_completion();
+      is_error = true;
+    }
+
+    if (is_error) {
+      auto verify_error = SSL_get_verify_result(ssl_);
+      OnConnectCompletion(true, false, static_cast<int>(verify_error), X509_verify_cert_error_string(verify_error));
       return false;
     }
   }
 
   return true;
-}
-
-
-void FunapiTcpImpl::OnConnectCompletion(const bool is_failed,
-                                        const bool is_timed_out) {
-  int error_code = FunapiUtil::GetSocketErrorCode();
-  fun::string error_string = FunapiUtil::GetSocketErrorString(error_code);
-
-  OnConnectCompletion(is_failed, is_timed_out, error_code, error_string);
 }
 
 
@@ -891,10 +901,10 @@ void FunapiTcpImpl::OnSend() {
     if (use_tls_) {
       nSent = static_cast<int>(SSL_write(ssl_,
         reinterpret_cast<char*>(body_.data()) + offset_,
-        static_cast<int>(body_.size() - offset_)));
+        body_.size() - offset_));
     }
     else {
-      nSent = static_cast<int>(send(socket_,
+      nSent = static_cast<int>(sceNetSend(socket_,
         reinterpret_cast<char*>(body_.data()) + offset_,
         body_.size() - offset_,
         0));
@@ -907,9 +917,7 @@ void FunapiTcpImpl::OnSend() {
     */
 
     if (nSent <= 0) {
-      int error_code = FunapiUtil::GetSocketErrorCode();
-      fun::string error_string = FunapiUtil::GetSocketErrorString(error_code);
-      send_completion_handler_(true, error_code, error_string, nSent);
+      send_completion_handler_(true, sce_net_errno, "sceNetSend() failed", nSent);
       CloseSocket();
     }
     else {
@@ -935,7 +943,7 @@ void FunapiTcpImpl::OnRecv() {
     nRead = static_cast<int>(SSL_read(ssl_, reinterpret_cast<char*>(buffer.data()), kBufferSize));
   }
   else {
-    nRead = static_cast<int>(recv(socket_, reinterpret_cast<char*>(buffer.data()), kBufferSize, 0));
+    nRead = static_cast<int>(sceNetRecv(socket_, reinterpret_cast<char*>(buffer.data()), kBufferSize, 0));
   }
 
   /*
@@ -945,9 +953,7 @@ void FunapiTcpImpl::OnRecv() {
   */
 
   if (nRead <= 0) {
-    int error_code = FunapiUtil::GetSocketErrorCode();
-    fun::string error_string = FunapiUtil::GetSocketErrorString(error_code);
-    recv_handler_(true, error_code, error_string, nRead, buffer);
+    recv_handler_(true, sce_net_errno, "sceNetRecv() failed", nRead, buffer);
     CloseSocket();
   }
   else {
@@ -956,7 +962,7 @@ void FunapiTcpImpl::OnRecv() {
 }
 
 
-bool FunapiTcpImpl::Send(const fun::vector<uint8_t> &body, const SendCompletionHandler &send_completion_handler) {
+bool FunapiTcpImpl::Send(const fun::vector<uint8_t> &body, SendCompletionHandler send_completion_handler) {
   send_completion_handler_ = send_completion_handler;
 
   body_.insert(body_.end(), body.cbegin(), body.cend());
@@ -1012,14 +1018,14 @@ FunapiUdpImpl::FunapiUdpImpl(const char* hostname_or_ip,
   int error_code = 0;
   fun::string error_string;
 
-  if (!InitAddrInfo(SOCK_DGRAM, hostname_or_ip, port, error_code, error_string)) {
+  if (!InitAddrInfo(SCE_NET_SOCK_DGRAM, hostname_or_ip, port, error_code, error_string)) {
     init_handler(true, error_code, error_string);
     return;
   }
 
   addrinfo_res_ = addrinfo_;
 
-  if (!InitSocket(addrinfo_res_, error_code, error_string)) {
+  if (!InitSocket(SCE_NET_SOCK_DGRAM, error_code, error_string)) {
     init_handler(true, error_code, error_string);
     return;
   }
@@ -1045,17 +1051,11 @@ void FunapiUdpImpl::OnSend() {
 void FunapiUdpImpl::OnRecv() {
   fun::vector<uint8_t> receiving_vector(kBufferSize);
 
-#ifdef FUNAPI_PLATFORM_WINDOWS
-  int nRead = static_cast<int>(recvfrom(socket_,
-                                        reinterpret_cast<char*>(receiving_vector.data()),
-                                        receiving_vector.size(), 0, addrinfo_res_->ai_addr,
-                                        reinterpret_cast<int*>(&addrinfo_res_->ai_addrlen)));
-#else
-  int nRead = static_cast<int>(recvfrom(socket_,
-                                        reinterpret_cast<char*>(receiving_vector.data()),
-                                        receiving_vector.size(), 0, addrinfo_res_->ai_addr,
-                                        (&addrinfo_res_->ai_addrlen)));
-#endif // FUNAPI_PLATFORM_WINDOWS
+  size_t len = sizeof(addrinfo_res_);
+  int nRead = static_cast<int>(sceNetRecvfrom(socket_,
+    reinterpret_cast<char*>(receiving_vector.data()),
+    receiving_vector.size(), 0, (SceNetSockaddr *)&addrinfo_res_,
+    (SceNetSocklen_t *)&len));
 
   /*
   if (nRead == 0) {
@@ -1063,10 +1063,8 @@ void FunapiUdpImpl::OnRecv() {
   }
   */
 
-  if (nRead <= 0) {
-    int error_code = FunapiUtil::GetSocketErrorCode();
-    fun::string error_string = FunapiUtil::GetSocketErrorString(error_code);
-    recv_handler_(true, error_code, error_string, nRead, receiving_vector);
+  if (nRead < 0) {
+    recv_handler_(true, sce_net_errno, "sceNetRecvfrom() failed", nRead, receiving_vector);
     CloseSocket();
   }
   else {
@@ -1078,7 +1076,11 @@ void FunapiUdpImpl::OnRecv() {
 bool FunapiUdpImpl::Send(const fun::vector<uint8_t> &body, const SendCompletionHandler &send_completion_handler) {
   uint8_t *buf = const_cast<uint8_t*>(body.data());
 
-  int nSent = static_cast<int>(sendto(socket_, reinterpret_cast<char*>(buf), body.size(), 0, addrinfo_res_->ai_addr, addrinfo_res_->ai_addrlen));
+  int nSent = static_cast<int>(sceNetSendto(socket_,
+    reinterpret_cast<char*>(buf),
+    body.size(), 0,
+    (SceNetSockaddr *)&addrinfo_res_,
+    sizeof(addrinfo_res_)));
 
   /*
   if (nSent == 0) {
@@ -1086,10 +1088,8 @@ bool FunapiUdpImpl::Send(const fun::vector<uint8_t> &body, const SendCompletionH
   }
   */
 
-  if (nSent <= 0) {
-    int error_code = FunapiUtil::GetSocketErrorCode();
-    fun::string error_string = FunapiUtil::GetSocketErrorString(error_code);
-    send_completion_handler(true, error_code, error_string, nSent);
+  if (nSent < 0) {
+    send_completion_handler(true, sce_net_errno, "sceNetSendto() failed", nSent);
     CloseSocket();
   }
   else {
@@ -1195,10 +1195,7 @@ void FunapiTcp::Connect(const char* hostname_or_ip,
 
 void FunapiTcp::Connect(std::shared_ptr<FunapiAddrInfo> info,
                         const ConnectCompletionHandler &connect_completion_handler) {
-  // TODO(sungjin): PS4 기능 테스트 시 아래 코드가 영향을 주는 지 확인
-  // auto addr_info_next = info->GetImpl()->GetAddrInfo()->ai_next;
-  auto addr_info = info->GetImpl()->GetAddrInfo();
-  impl_->Connect(addr_info, connect_completion_handler);
+  impl_->Connect(info->GetImpl()->GetAddrInfo(), connect_completion_handler);
 }
 
 

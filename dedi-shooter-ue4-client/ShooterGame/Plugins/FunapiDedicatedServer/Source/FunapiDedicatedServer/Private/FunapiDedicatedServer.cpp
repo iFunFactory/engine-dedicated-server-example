@@ -282,33 +282,27 @@ namespace fun
       (new FAutoDeleteAsyncTask<FAsyncPendingUsersTask>)->StartBackgroundTask();
     }
 
-    void SendVersion();
     bool ParseConsoleCommand(const TCHAR* cmd, const FString &match_id_field, const FString &manager_server_field, const FString &heartbeat_field, const FString &version_field)
     {
-      UE_LOG(LogFunapiDedicatedServer, Log, TEXT("version_field is '%s'"), *version_field);
-
-      bool ret = false;
-
-      if (ParseConsoleCommand(cmd, match_id_field, manager_server_field, heartbeat_field))
-      {
-        ret = true;
-      }
+      // 호스 매니저로 받은 명령줄 실행인자 값을 출력합니다.
+      UE_LOG(LogFunapiDedicatedServer, Log, TEXT("%s"), cmd);
 
       if (FParse::Param(cmd, *version_field))
       {
         use_send_version_and_exit_ = true;
-        UE_LOG(LogFunapiDedicatedServer, Log, TEXT("version_field is true"));
+        UE_LOG(LogFunapiDedicatedServer, Log, TEXT("Need to send version imformation"));
       }
       else {
         use_send_version_and_exit_ = false;
-        UE_LOG(LogFunapiDedicatedServer, Log, TEXT("version_field is false"));
       }
 
-      if (use_send_version_and_exit_ && ret) {
-        SendVersion();
+
+      if (ParseConsoleCommand(cmd, match_id_field, manager_server_field, heartbeat_field))
+      {
+        return true;
       }
 
-      return ret;
+      return false;
     }
 
     bool ParseConsoleCommand(const TCHAR* cmd, const FString &match_id_field, const FString &manager_server_field, const FString &heartbeat_field)
@@ -659,7 +653,6 @@ namespace fun
                 if (response_data_handler) {
                   response_data_handler(json_object->GetObjectField(FString("data")));
                 }
-                response_handler(processed_response);
               }
               else {
                 UE_LOG(LogFunapiDedicatedServer, Error, TEXT("The message format is invalied. Please check host manager. Requset : %s, %s"), *verb, *path);
@@ -685,8 +678,32 @@ namespace fun
       {
         auth_map_.Empty();
 
-        TSharedPtr<FJsonObject> data = response_data->GetObjectField(FString("data"));
-        AddData(data);
+        // 서버와 호환 작업으로 인해 응답 메세지는 다음과 같은 두가지의 형태를 가진다.
+
+        // 1.
+        //
+        // "data": {
+        //   "UserList": [...],
+        //   ...
+        // }
+
+
+        // 2.
+        //
+        // {
+        //   "UserList": [...],
+        //    ...
+        // }
+
+        if (response_data->HasField("data"))
+        {
+          TSharedPtr<FJsonObject> data = response_data->GetObjectField(FString("data"));
+          AddData(data);
+        }
+        else
+        {
+          AddData(response_data);
+        }
       };
 
       Get("", "", response_handler, data_handler);
