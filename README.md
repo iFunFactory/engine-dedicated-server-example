@@ -174,10 +174,20 @@ C:\engine-dedicated-server-example\dedi-pong-unity-client\Build\Pong.exe
 /home/user/engine-dedicated-server-example/dedi-pong-unity-client/Build/pong_linux.x86_64
 ```
 
-<!--
 ## UE4 데디서버 프로젝트 빌드
 
-### 클라이언트 빌드
+아래 문서를 진행을 위해서 [UE4 Dedicated Server 빌드](https://wiki.unrealengine.com/Dedicated_Server_Guide_(Windows_%26_Linux)) 에 관한 경험이 필요합니다.
 
-### 서버 빌드
--->
+### 1. 빌드하기
+
+* **주의 사항**
+  - github 의 용량 제한 문제로 Content 폴더가 빠져있습니다. 예제 실행을 위해서는 **에픽 게임즈 런처**에서 슈터 게임 예제를 다운 받으신 후 Content 폴더를 복사하셔야 합니다.
+  - 4.21 버전의 엔진을 사용시 발생하는 `CachedCPPEnvironments` 에러는 [.cc 파일 컴파일 오류](https://www.ifunfactory.com/engine/documents/reference/ko/client-plugin.html#cc) 를 참고해 주세요.
+
+1. [UE4 엔진 소스](https://github.com/EpicGames/UnrealEngine) 로 에디터를 빌드합니다.
+2. 빌드된 UE4 에디터로 ShooterGame 프로젝트 에디터를 실행시킵니다.
+3. 실행된 에디터의 `File->Package Project` 에서 원하는 플랫폼으로 원하는 위치에 패키징을 진행합니다.
+3. 패키징이 완료된 후 에디터의 `File->Opne Visual Studio` 로 Visual Studio 를 실행시킵니다.
+4. 실행된 Visual Studio 의 구성속성을 `Development Server` 으로 변경 후 빌드합니다.
+5. 빌드 결과물(`Binaries/$Platform/ShooterGameServer`) 를 2번 에서 패키징된 결과물의 `ShooterGame/Binaries/$Platform/` 하위폴더에 복사합니다.
+6. 호스트 매니저에 5번 에서 복사한 바이너리 경로를 설정합니다.
