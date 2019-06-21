@@ -7,8 +7,7 @@
 이 프로젝트는 다음과 같은 서브 프로젝트들로 구성되어 있습니다.
 * **server-app** : 아이펀엔진으로 제작된 게임서버입니다. 엔진의 **DedicatedServerManager** 콤포넌트를 사용합니다.
 * **dedi-pong-unity-client** : server-app 과 연동하는 유니티 프로젝트입니다.**funapi-unity-plugin** 을 포함하고 있습니다.
-* **dedi-ue4-client** : 곧 공개할 예정입니다.
-
+* **dedi-shooter-ue4-client** : server-app 과 연동하는 언리얼 프로젝트입니다.**Funapi 플러그인**, **FunapiDedicatedServer 플러그인** 을 포함하고 있습니다.
 ## 게임 서버 빌드 및 실행하기
 
 게임 서버의 운영체제는 *Ubuntu 16.04 Xenial* 이며, 사용자 홈 디렉터리에 **engine-dedicated-server-example** 프로젝트를 저장 해 두었다고 가정하겠습니다.
@@ -190,4 +189,4 @@ C:\engine-dedicated-server-example\dedi-pong-unity-client\Build\Pong.exe
 3. 패키징이 완료된 후 에디터의 `File->Opne Visual Studio` 로 Visual Studio 를 실행시킵니다.
 4. 실행된 Visual Studio 의 구성속성을 `Development Server` 으로 변경 후 빌드합니다.
 5. 빌드 결과물(`Binaries/$Platform/ShooterGameServer`) 를 2번 에서 패키징된 결과물의 `ShooterGame/Binaries/$Platform/` 하위폴더에 복사합니다.
-6. 호스트 매니저에 5번 에서 복사한 바이너리 경로를 설정합니다.
+6. 데디서버 호스트 매니저에 5번 에서 복사한 바이너리 경로를 설정합니다.
