@@ -311,16 +311,27 @@ bind 0.0.0.0
 
 ### 호스트 매니저
 
+#### 1. 준비
+
 호스트 매니저를 MacOS 에서 실행할 경우 아래와 같은 라이브러리가 필요합니다. 파이썬은 2.7로 설치해 주세요.
 
 ```
 python gevent flask redis requests python-gflags netifaces cryptography
 ```
 
+#### 2. 플래그 파일 설정
+
 설정 파일 `funapi-dedicated-server-host.flag` 에 유니티 데디케이티드 서버의 실행 파일 경로를
 입력해야 합니다. Linux 의 경우 `/etc/funapi-dedicated-server-host/funapi-dedicated-server-host.flag` 에
 설정 파일이 있습니다.
+
+#### 2.1 실행 경로 추가
+
 `binary_path` 항목에 아래와 같은 형식으로 입력해 주세요.
+
+#### 2.1.1 실행 파일 사용
+
+실행 파일의 경로를 `binary_path` 에 입력해 주세요.
 
 ```
 // Windows일 경우
@@ -333,16 +344,30 @@ python gevent flask redis requests python-gflags netifaces cryptography
 --binary_path=/home/zoo/dedi-server-example/server
 ```
 
-데디케이티드 서버를 에디터로 실행하고 싶을 경우 아래 Command를 배치 파일로 만들어서 만든 배치 파일
-경로를 `binary_path` 에 입력하면 됩니다.
+#### 2.1.2 에디터 사용
+
+데디케이티드 서버를 에디터로 실행하고 싶을 경우 먼저 EditorApplication.isPlaying 값을 true 로 세팅해주는 스태틱 메서드를 정의해 주세요.
+
+```
+public static void StartPlay ()
+{
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = true;
+#endif
+}
+```
+
+그리고 아래 Command를 배치 파일로 만들어서 만든 배치 파일 경로를 `binary_path` 에 입력하면 됩니다.
 
 ```
 // Windows일 경우
-"C:\Program Files\Unity\Editor\Unity.exe" -projectPath /Path/to/project/directory -executeMethod FunapiManager.StartPlay %*
+"C:\Program Files\Unity\Editor\Unity.exe" -projectPath /Path/to/project/directory -executeMethod PongManager.StartPlay %*
 
 // MacOS일 경우
-/Applications/Unity/Unity.app/Contents/MacOS/Unity -projectPath /Path/to/project/directory -executeMethod FunapiManager.StartPlay $@
+/Applications/Unity/Unity.app/Contents/MacOS/Unity -projectPath /Path/to/project/directory -executeMethod PongManager.StartPlay $@
 ```
+
+#### 2.2 기타 정보 추가
 
 그 외에 전용 서버 타입과 레디스 서버 관련 정보를 입력해 줍니다.
 
@@ -362,6 +387,8 @@ python gevent flask redis requests python-gflags netifaces cryptography
 --restful_interface=eth1
 ```
 
+#### 3. 실행
+
 실행은 터미널에서 호스트 매니저가 있는 폴더로 이동해서 아래와 같이 실행하면 됩니다.
 
 ```
@@ -375,8 +402,9 @@ python -m funapi_dedicated_server --flagfile=./funapi-dedicated-server-host.flag
 
 ### 클라이언트
 
-Lobby Scene의 ``Pong Manager`` 에 아이펀 엔진 서버의 주소와 포트 번호를 입력한 후 빌드해서
-클라이언트 실행 파일을 만듭니다. 클라이언트는 두 개가 필요하므로 복사해서 두 개를 만들어 둡니다.
+먼저 Main Scene 대신 Lobby Secene을 선택해 줍니다. 그 후 Lobby Scene의 ``Pong Manager`` 에
+아이펀 엔진 서버의 주소와 포트 번호를 입력한 후 빌드해서 클라이언트 실행 파일을 만듭니다.
+클라이언트는 두 개가 필요하므로 복사해서 두 개를 만들어 둡니다.
 
 ### 실행
 
