@@ -80,7 +80,11 @@ public class GameManager : NetworkBehaviour
 
         yield return StartCoroutine(OnEnd());
 
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.Exit(0);
+#else
         Application.Quit();
+#endif
     }
 
     IEnumerator OnStart ()
