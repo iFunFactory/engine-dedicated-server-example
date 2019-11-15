@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -209,7 +209,7 @@ protected:
 	uint8 bHealthRegen : 1;
 
 	/** god mode cheat */
-	UPROPERTY(Transient, Replicated)
+	UPROPERTY(Transient)
 	uint8 bGodMode : 1;
 
 	/** should produce force feedback? */
@@ -297,6 +297,9 @@ public:
 
 	/** Updates leaderboard stats at the end of a round */
 	void UpdateLeaderboardsOnGameEnd();
+
+	/** Updates stats at the end of a round */
+	void UpdateStatsOnGameEnd(bool bIsWinner);
 
 	/** Updates the save file at the end of a round */
 	void UpdateSaveFileOnGameEnd(bool bIsWinner);

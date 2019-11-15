@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "ShooterGameDelegates.h"
@@ -35,7 +35,7 @@ class FShooterGameModule : public FDefaultGameModuleImpl
 	}
 };
 
-IMPLEMENT_PRIMARY_GAME_MODULE(FShooterGameModule, ShooterGame, "ShooterGame");
+IMPLEMENT_PRIMARY_GAME_MODULE(FShooterGameModule, ShooterGame, "슈팅게임");
 
 DEFINE_LOG_CATEGORY(LogShooter)
 DEFINE_LOG_CATEGORY(LogShooterWeapon)

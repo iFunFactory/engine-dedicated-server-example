@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 #include "SlateBasics.h"
 #include "SlateExtras.h"
@@ -7,6 +7,7 @@
 #include "Widgets/SShooterServerList.h"
 #include "Widgets/SShooterDemoList.h"
 #include "Widgets/SShooterLeaderboard.h"
+#include "Widgets/SShooterOnlineStore.h"
 #include "Widgets/SShooterSplitScreenLobbyWidget.h"
 #include "ShooterOptions.h"
 
@@ -90,11 +91,17 @@ protected:
 	/** leaderboard widget */
 	TSharedPtr<class SShooterLeaderboard> LeaderboardWidget;
 
+	/** online store widget */
+	TSharedPtr<class SShooterOnlineStore> OnlineStoreWidget;
+
 	/** custom menu */
 	TSharedPtr<class FShooterMenuItem> JoinServerItem;
 
 	/** yet another custom menu */
 	TSharedPtr<class FShooterMenuItem> LeaderboardItem;
+
+	/** yet another custom menu */
+	TSharedPtr<class FShooterMenuItem> OnlineStoreItem;
 
 	/** Custom demo browser menu */
 	TSharedPtr<class FShooterMenuItem> DemoBrowserItem;
@@ -214,6 +221,9 @@ protected:
 
 	/** Show leaderboard */
 	void OnShowLeaderboard();
+
+	/** Show online store */
+	void OnShowOnlineStore();
 
 	/** Show demo browser */
 	void OnShowDemoBrowser();

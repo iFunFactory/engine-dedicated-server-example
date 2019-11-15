@@ -1,12 +1,34 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "Online/ShooterPlayerState.h"
 #include "GameDelegates.h"
+#include "IPlatformFilePak.h"
 
 #include "UObject/PackageReload.h"
 
 //#include "Runtime/RHI/Public/RHICommandlist.h"
+
+// Global struct for registering delegates super early
+struct FShooterGameGlobalDelegateInit
+{
+	FShooterGameGlobalDelegateInit()
+	{
+		FPakPlatformFile::GetPakChunkSignatureCheckFailedHandler().AddStatic(FShooterGameGlobalDelegateInit::HandlePakChunkSignatureCheckFailed);
+		FPakPlatformFile::GetPakMasterSignatureTableCheckFailureHandler().AddStatic(FShooterGameGlobalDelegateInit::HandlePakMasterSignatureTableCheckFailure);
+	}
+
+	static void HandlePakChunkSignatureCheckFailed(const FPakChunkSignatureCheckFailedData& Data)
+	{
+		UE_LOG(LogShooter, Fatal, TEXT("Pak chunk signature check failed!"));
+	}
+
+	static void HandlePakMasterSignatureTableCheckFailure(const FString& InPakFilename)
+	{
+		UE_LOG(LogShooter, Fatal, TEXT("Pak master signature table check failed for pak '%s'"), *InPakFilename);
+	}
+}
+GShooterGameGlobalDelegateInit;
 
 #if !UE_BUILD_SHIPPING
 
@@ -132,14 +154,7 @@ static void ReloadHandler( EPackageReloadPhase ReloadPhase, FPackageReloadedEven
 		/*{
 			// fixup uniform expressions
 			UMaterialInterface::RecacheAllMaterialUniformExpressions();
-		}
-
-		ENQUEUE_UNIQUE_RENDER_COMMAND(
-		FRecreateBoundShaderStates,
-		{
-			RHIRecreateRecursiveBoundShaderStates();
-		});*/
-
+		}*/
 
 		/*for (TObjectIterator<UMaterialInstance> It; It; ++It)
 		{

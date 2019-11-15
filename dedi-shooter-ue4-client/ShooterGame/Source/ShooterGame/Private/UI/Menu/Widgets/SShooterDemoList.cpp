@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "SShooterDemoList.h"
@@ -185,7 +185,7 @@ void SShooterDemoList::BuildDemoList()
 
 	if ( ReplayStreamer.IsValid() )
 	{
-		ReplayStreamer->EnumerateStreams(EnumerateStreamsVersion, FString(), FString(), FEnumerateStreamsCallback::CreateSP(this, &SShooterDemoList::OnEnumerateStreamsComplete));
+		ReplayStreamer->EnumerateStreams(EnumerateStreamsVersion, INDEX_NONE, FString(), TArray<FString>(), FEnumerateStreamsCallback::CreateSP(this, &SShooterDemoList::OnEnumerateStreamsComplete));
 	}
 }
 

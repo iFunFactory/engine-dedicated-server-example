@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "SShooterScoreboardWidget.h"
@@ -791,8 +791,8 @@ TSharedRef<SWidget> SShooterScoreboardWidget::MakePlayerRow(const FTeamPlayer& T
 		.HAlign(HAlign_Right)
 		.VAlign(VAlign_Center)
 		.Visibility(this, &SShooterScoreboardWidget::PlayerPresenceToItemVisibility, TeamPlayer)
-		.OnMouseMove(this, &SShooterScoreboardWidget::OnMouseOverPlayer, TeamPlayer)
-		.BorderBackgroundColor(this, &SShooterScoreboardWidget::GetScoreboardBorderColor, TeamPlayer)
+		.OnMouseMove(const_cast<SShooterScoreboardWidget*>(this), &SShooterScoreboardWidget::OnMouseOverPlayer, TeamPlayer)
+		.BorderBackgroundColor(const_cast<SShooterScoreboardWidget*>(this), &SShooterScoreboardWidget::GetScoreboardBorderColor, TeamPlayer)
 		.BorderImage(&ScoreboardStyle->ItemBorderBrush)
 		[
 			SNew(STextBlock)
@@ -812,7 +812,7 @@ TSharedRef<SWidget> SShooterScoreboardWidget::MakePlayerRow(const FTeamPlayer& T
 			.VAlign(VAlign_Center)
 			.HAlign(HAlign_Center)
 			.Visibility(this, &SShooterScoreboardWidget::PlayerPresenceToItemVisibility, TeamPlayer)
-			.OnMouseMove(this, &SShooterScoreboardWidget::OnMouseOverPlayer, TeamPlayer)
+			.OnMouseMove(const_cast<SShooterScoreboardWidget*>(this), &SShooterScoreboardWidget::OnMouseOverPlayer, TeamPlayer)
 			.BorderBackgroundColor(this, &SShooterScoreboardWidget::GetScoreboardBorderColor, TeamPlayer)
 			.BorderImage(&ScoreboardStyle->ItemBorderBrush)
 			[

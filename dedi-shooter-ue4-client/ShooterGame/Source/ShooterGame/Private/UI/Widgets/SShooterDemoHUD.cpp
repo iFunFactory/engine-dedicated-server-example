@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "SShooterDemoHUD.h"
@@ -248,7 +248,7 @@ FText SShooterDemoHUD::GetPlaybackSpeed() const
 		return FText::GetEmpty();
 	}
 
-	if (PlayerOwner->GetWorldSettings()->Pauser == nullptr)
+	if (PlayerOwner->GetWorldSettings()->GetPauserPlayerState() == nullptr)
 	{
 		FNumberFormattingOptions FormatOptions = FNumberFormattingOptions()
 			.SetMinimumFractionalDigits(2)
@@ -262,7 +262,7 @@ FText SShooterDemoHUD::GetPlaybackSpeed() const
 
 ECheckBoxState SShooterDemoHUD::IsPauseChecked() const
 {
-	if (PlayerOwner.IsValid() && PlayerOwner->GetWorldSettings() != nullptr && PlayerOwner->GetWorldSettings()->Pauser != nullptr)
+	if (PlayerOwner.IsValid() && PlayerOwner->GetWorldSettings() != nullptr && PlayerOwner->GetWorldSettings()->GetPauserPlayerState() != nullptr)
 	{
 		return ECheckBoxState::Checked;
 	}
@@ -288,13 +288,13 @@ void SShooterDemoHUD::OnPauseCheckStateChanged(ECheckBoxState CheckState) const
 	{
 		case ECheckBoxState::Checked:
 		{
-			WorldSettings->Pauser = PlayerOwner->PlayerState;
+			WorldSettings->SetPauserPlayerState(PlayerOwner->PlayerState);
 			break;
 		}
 
 		case ECheckBoxState::Unchecked:
 		{
-			WorldSettings->Pauser = nullptr;
+			WorldSettings->SetPauserPlayerState(nullptr);
 			break;
 		}
 

@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "ShooterOptions.h"
@@ -284,6 +284,7 @@ void FShooterOptions::UpdateOptions()
 	InvertYAxisOption->SelectedMultiChoice =  GetCurrentMouseYAxisInvertedIndex();
 	AimSensitivityOption->SelectedMultiChoice = GetCurrentMouseSensitivityIndex();
 	GammaOption->SelectedMultiChoice = GetCurrentGammaIndex();
+	VibrationOption->SelectedMultiChoice = bVibrationOpt ? 1 : 0;
 
 	GammaOptionChanged(GammaOption, GammaOption->SelectedMultiChoice);
 #if PLATFORM_DESKTOP

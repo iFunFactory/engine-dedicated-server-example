@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -252,6 +252,14 @@ class AShooterWeapon : public AActor
 	UPROPERTY(EditDefaultsOnly, Category=HUD)
 	bool bHideCrosshairWhileNotAiming;
 
+	/** Adjustment to handle frame rate affecting actual timer interval. */
+	UPROPERTY(Transient)
+	float TimerIntervalAdjustment;
+
+	/** Whether to allow automatic weapons to catch up with shorter refire cycles */
+	UPROPERTY(Config)
+	bool bAllowAutomaticWeaponCatchup = true;
+
 	/** check if weapon has infinite ammo (include owner's cheats) */
 	bool HasInfiniteAmmo() const;
 
@@ -462,6 +470,9 @@ protected:
 	/** [server] fire & update ammo */
 	UFUNCTION(reliable, server, WithValidation)
 	void ServerHandleFiring();
+
+	/** [local + server] handle weapon refire, compensating for slack time if the timer can't sample fast enough */
+	void HandleReFiring();
 
 	/** [local + server] handle weapon fire */
 	void HandleFiring();

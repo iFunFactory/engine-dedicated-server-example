@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "Bots/ShooterAIController.h"
@@ -20,9 +20,9 @@ AShooterAIController::AShooterAIController(const FObjectInitializer& ObjectIniti
 	bWantsPlayerState = true;
 }
 
-void AShooterAIController::Possess(APawn* InPawn)
+void AShooterAIController::OnPossess(APawn* InPawn)
 {
-	Super::Possess(InPawn);
+	Super::OnPossess(InPawn);
 
 	AShooterBot* Bot = Cast<AShooterBot>(InPawn);
 
@@ -41,9 +41,9 @@ void AShooterAIController::Possess(APawn* InPawn)
 	}
 }
 
-void AShooterAIController::UnPossess()
+void AShooterAIController::OnUnPossess()
 {
-	Super::UnPossess();
+	Super::OnUnPossess();
 
 	BehaviorComp->StopTree();
 }
@@ -76,10 +76,9 @@ void AShooterAIController::FindClosestEnemy()
 	float BestDistSq = MAX_FLT;
 	AShooterCharacter* BestPawn = NULL;
 
-	for (FConstPawnIterator It = GetWorld()->GetPawnIterator(); It; ++It)
+	for (AShooterCharacter* TestPawn : TActorRange<AShooterCharacter>(GetWorld()))
 	{
-		AShooterCharacter* TestPawn = Cast<AShooterCharacter>(*It);
-		if (TestPawn && TestPawn->IsAlive() && TestPawn->IsEnemyFor(this))
+		if (TestPawn->IsAlive() && TestPawn->IsEnemyFor(this))
 		{
 			const float DistSq = (TestPawn->GetActorLocation() - MyLoc).SizeSquared();
 			if (DistSq < BestDistSq)
@@ -106,10 +105,9 @@ bool AShooterAIController::FindClosestEnemyWithLOS(AShooterCharacter* ExcludeEne
 		float BestDistSq = MAX_FLT;
 		AShooterCharacter* BestPawn = NULL;
 
-		for (FConstPawnIterator It = GetWorld()->GetPawnIterator(); It; ++It)
+		for (AShooterCharacter* TestPawn : TActorRange<AShooterCharacter>(GetWorld()))
 		{
-			AShooterCharacter* TestPawn = Cast<AShooterCharacter>(*It);
-			if (TestPawn && TestPawn != ExcludeEnemy && TestPawn->IsAlive() && TestPawn->IsEnemyFor(this))
+			if (TestPawn != ExcludeEnemy && TestPawn->IsAlive() && TestPawn->IsEnemyFor(this))
 			{
 				if (HasWeaponLOSToEnemy(TestPawn, true) == true)
 				{
@@ -139,7 +137,6 @@ bool AShooterAIController::HasWeaponLOSToEnemy(AActor* InEnemyActor, const bool 
 	bool bHasLOS = false;
 	// Perform trace to retrieve hit info
 	FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(AIWeaponLosTrace), true, GetPawn());
-	TraceParams.bTraceAsyncScene = true;
 
 	TraceParams.bReturnPhysicalMaterial = true;	
 	FVector StartLocation = MyBot->GetActorLocation();	

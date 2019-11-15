@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "Player/ShooterPersistentUser.h"
@@ -112,7 +112,7 @@ UShooterPersistentUser* UShooterPersistentUser::LoadPersistentUser(FString SlotN
 	// Persistent users aren't valid in this state.
 	if (SlotName.Len() > 0)
 	{
-		if (!GIsBuildMachine)
+		if (!GIsBuildMachine && UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))
 		{
 			Result = Cast<UShooterPersistentUser>(UGameplayStatics::LoadGameFromSlot(SlotName, UserIndex));
 		}

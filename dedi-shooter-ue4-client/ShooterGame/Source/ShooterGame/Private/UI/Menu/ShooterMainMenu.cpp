@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "ShooterMainMenu.h"
@@ -327,6 +327,10 @@ void FShooterMainMenu::Construct(TWeakObjectPtr<UShooterGameInstance> _GameInsta
 		// Leaderboards
 		MenuHelper::AddMenuItemSP(RootMenuItem, LOCTEXT("Leaderboards", "LEADERBOARDS"), this, &FShooterMainMenu::OnShowLeaderboard);
 		MenuHelper::AddCustomMenuItem(LeaderboardItem,SAssignNew(LeaderboardWidget,SShooterLeaderboard).OwnerWidget(MenuWidget).PlayerOwner(GetPlayerOwner()));
+
+		// Purchases
+		MenuHelper::AddMenuItemSP(RootMenuItem, LOCTEXT("Store", "ONLINE STORE"), this, &FShooterMainMenu::OnShowOnlineStore);
+		MenuHelper::AddCustomMenuItem(OnlineStoreItem, SAssignNew(OnlineStoreWidget, SShooterOnlineStore).OwnerWidget(MenuWidget).PlayerOwner(GetPlayerOwner()));
 
 #if !SHOOTER_CONSOLE_UI
 
@@ -1302,6 +1306,16 @@ void FShooterMainMenu::OnShowLeaderboard()
 #else
 	LeaderboardWidget->ReadStats();
 #endif
+	MenuWidget->EnterSubMenu();
+}
+
+void FShooterMainMenu::OnShowOnlineStore()
+{
+	MenuWidget->NextMenu = OnlineStoreItem->SubMenu;
+#if LOGIN_REQUIRED_FOR_ONLINE_PLAY
+	UE_LOG(LogOnline, Warning, TEXT("You need to be logged in before using the store"));
+#endif
+	OnlineStoreWidget->BeginGettingOffers();
 	MenuWidget->EnterSubMenu();
 }
 

@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
 *	
@@ -136,8 +136,8 @@ void InitClassReplicationInfo(FClassReplicationInfo& Info, UClass* Class, bool b
 	AActor* CDO = Class->GetDefaultObject<AActor>();
 	if (bSpatialize)
 	{
-		Info.CullDistanceSquared = CDO->NetCullDistanceSquared;
-		UE_LOG(LogShooterReplicationGraph, Log, TEXT("Setting cull distance for %s to %f (%f)"), *Class->GetName(), Info.CullDistanceSquared, FMath::Sqrt(Info.CullDistanceSquared));
+		Info.SetCullDistanceSquared(CDO->NetCullDistanceSquared);
+		UE_LOG(LogShooterReplicationGraph, Log, TEXT("Setting cull distance for %s to %f (%f)"), *Class->GetName(), Info.GetCullDistanceSquared(), Info.GetCullDistance());
 	}
 
 	Info.ReplicationPeriodFrame = FMath::Max<uint32>( (uint32)FMath::RoundToFloat(ServerMaxTickRate / CDO->NetUpdateFrequency), 1);
@@ -149,16 +149,6 @@ void InitClassReplicationInfo(FClassReplicationInfo& Info, UClass* Class, bool b
 	}
 
 	UE_LOG(LogShooterReplicationGraph, Log, TEXT("Setting replication period for %s (%s) to %d frames (%.2f)"), *Class->GetName(), *NativeClass->GetName(), Info.ReplicationPeriodFrame, CDO->NetUpdateFrequency);
-}
-
-const UClass* GetParentNativeClass(const UClass* Class)
-{
-	while(Class && !Class->IsNative())
-	{
-		Class = Class->GetSuperClass();
-	}
-
-	return Class;
 }
 
 void UShooterReplicationGraph::ResetGameWorldState()
@@ -291,7 +281,7 @@ void UShooterReplicationGraph::InitGlobalActorClassSettings()
 	PawnClassRepInfo.DistancePriorityScale = 1.f;
 	PawnClassRepInfo.StarvationPriorityScale = 1.f;
 	PawnClassRepInfo.ActorChannelFrameTimeout = 4;
-	PawnClassRepInfo.CullDistanceSquared = 15000.f * 15000.f; // Yuck
+	PawnClassRepInfo.SetCullDistanceSquared(15000.f * 15000.f); // Yuck
 	SetClassInfo( APawn::StaticClass(), PawnClassRepInfo );
 
 	FClassReplicationInfo PlayerStateRepInfo;
@@ -320,14 +310,14 @@ void UShooterReplicationGraph::InitGlobalActorClassSettings()
 	// Print out what we came up with
 	UE_LOG(LogShooterReplicationGraph, Log, TEXT(""));
 	UE_LOG(LogShooterReplicationGraph, Log, TEXT("Class Routing Map: "));
-	UEnum* Enum = FindObject<UEnum>(ANY_PACKAGE, TEXT("EClassRepNodeMapping"));
+	UEnum* Enum = StaticEnum<EClassRepNodeMapping>();
 	for (auto ClassMapIt = ClassRepNodePolicies.CreateIterator(); ClassMapIt; ++ClassMapIt)
 	{		
-		const UClass* Class = CastChecked<UClass>(ClassMapIt.Key().ResolveObjectPtr());
+		UClass* Class = CastChecked<UClass>(ClassMapIt.Key().ResolveObjectPtr());
 		const EClassRepNodeMapping Mapping = ClassMapIt.Value();
 
 		// Only print if different than native class
-		const UClass* ParentNativeClass = GetParentNativeClass(Class);
+		UClass* ParentNativeClass = GetParentNativeClass(Class);
 		const EClassRepNodeMapping* ParentMapping = ClassRepNodePolicies.Get(ParentNativeClass);
 		if (ParentMapping && Class != ParentNativeClass && Mapping == *ParentMapping)
 		{
@@ -342,7 +332,7 @@ void UShooterReplicationGraph::InitGlobalActorClassSettings()
 	FClassReplicationInfo DefaultValues;
 	for (auto ClassRepInfoIt = GlobalActorReplicationInfoMap.CreateClassMapIterator(); ClassRepInfoIt; ++ClassRepInfoIt)
 	{
-		const UClass* Class = CastChecked<UClass>(ClassRepInfoIt.Key().ResolveObjectPtr());
+		UClass* Class = CastChecked<UClass>(ClassRepInfoIt.Key().ResolveObjectPtr());
 		const FClassReplicationInfo& ClassInfo = ClassRepInfoIt.Value();
 		UE_LOG(LogShooterReplicationGraph, Log, TEXT("  %s (%s) -> %s"), *Class->GetName(), *GetNameSafe(GetParentNativeClass(Class)), *ClassInfo.BuildDebugStringDelta());
 	}
@@ -415,7 +405,7 @@ void UShooterReplicationGraph::InitConnectionGraphNodes(UNetReplicationGraphConn
 	AddConnectionGraphNode(AlwaysRelevantConnectionNode, RepGraphConnection);
 }
 
-EClassRepNodeMapping UShooterReplicationGraph::GetMappingPolicy(const UClass* Class)
+EClassRepNodeMapping UShooterReplicationGraph::GetMappingPolicy(UClass* Class)
 {
 	EClassRepNodeMapping* PolicyPtr = ClassRepNodePolicies.Get(Class);
 	EClassRepNodeMapping Policy = PolicyPtr ? *PolicyPtr : EClassRepNodeMapping::NotRouted;
@@ -527,13 +517,7 @@ void UShooterReplicationGraph::OnCharacterEquipWeapon(AShooterCharacter* Charact
 	{
 		CHECK_WORLDS(Character);
 
-		FGlobalActorReplicationInfo& ActorInfo = GlobalActorReplicationInfoMap.Get(Character);
-		ActorInfo.DependentActorList.PrepareForWrite();
-
-		if (!ActorInfo.DependentActorList.Contains(NewWeapon))
-		{
-			ActorInfo.DependentActorList.Add(NewWeapon);
-		}
+		GlobalActorReplicationInfoMap.AddDependentActor(Character, NewWeapon);
 	}
 }
 
@@ -543,10 +527,7 @@ void UShooterReplicationGraph::OnCharacterUnEquipWeapon(AShooterCharacter* Chara
 	{
 		CHECK_WORLDS(Character);
 
-		FGlobalActorReplicationInfo& ActorInfo = GlobalActorReplicationInfoMap.Get(Character);
-		ActorInfo.DependentActorList.PrepareForWrite();
-
-		ActorInfo.DependentActorList.Remove(OldWeapon);
+		GlobalActorReplicationInfoMap.RemoveDependentActor(Character, OldWeapon);
 	}
 }
 
@@ -603,66 +584,85 @@ void UShooterReplicationGraphNode_AlwaysRelevant_ForConnection::GatherActorLists
 
 	ReplicationActorList.Reset();
 
-	ReplicationActorList.ConditionalAdd(Params.Viewer.InViewer);
-	ReplicationActorList.ConditionalAdd(Params.Viewer.ViewTarget);
-	
-	if (AShooterPlayerController* PC = Cast<AShooterPlayerController>(Params.Viewer.InViewer))
+	auto ResetActorCullDistance = [&](AActor* ActorToSet, AActor*& LastActor) {
+
+		if (ActorToSet != LastActor)
+		{
+			LastActor = ActorToSet;
+
+			UE_LOG(LogShooterReplicationGraph, Verbose, TEXT("Setting pawn cull distance to 0. %s"), *ActorToSet->GetName());
+			FConnectionReplicationActorInfo& ConnectionActorInfo = Params.ConnectionManager.ActorInfoMap.FindOrAdd(ActorToSet);
+			ConnectionActorInfo.SetCullDistanceSquared(0.f);
+		}
+	};
+
+	for (const FNetViewer& CurViewer : Params.Viewers)
 	{
-		// 50% throttling of PlayerStates.
-		const bool bReplicatePS = (Params.ConnectionManager.ConnectionId % 2) == (Params.ReplicationFrameNum % 2);
-		if (bReplicatePS)
+		ReplicationActorList.ConditionalAdd(CurViewer.InViewer);
+		ReplicationActorList.ConditionalAdd(CurViewer.ViewTarget);
+
+		if (AShooterPlayerController* PC = Cast<AShooterPlayerController>(CurViewer.InViewer))
 		{
-			// Always return the player state to the owning player. Simulated proxy player states are handled by UShooterReplicationGraphNode_PlayerStateFrequencyLimiter
-			if (APlayerState* PS = PC->PlayerState)
+			// 50% throttling of PlayerStates.
+			const bool bReplicatePS = (Params.ConnectionManager.ConnectionId % 2) == (Params.ReplicationFrameNum % 2);
+			if (bReplicatePS)
 			{
-				if (!bInitializedPlayerState)
+				// Always return the player state to the owning player. Simulated proxy player states are handled by UShooterReplicationGraphNode_PlayerStateFrequencyLimiter
+				if (APlayerState* PS = PC->PlayerState)
 				{
-					bInitializedPlayerState = true;
-					FConnectionReplicationActorInfo& ConnectionActorInfo = Params.ConnectionManager.ActorInfoMap.FindOrAdd( PS );
-					ConnectionActorInfo.ReplicationPeriodFrame = 1;
-				}
+					if (!bInitializedPlayerState)
+					{
+						bInitializedPlayerState = true;
+						FConnectionReplicationActorInfo& ConnectionActorInfo = Params.ConnectionManager.ActorInfoMap.FindOrAdd(PS);
+						ConnectionActorInfo.ReplicationPeriodFrame = 1;
+					}
 
-				ReplicationActorList.ConditionalAdd(PS);
-			}
-		}
-
-		if (AShooterCharacter* Pawn = Cast<AShooterCharacter>(PC->GetPawn()))
-		{
-			if (Pawn != LastPawn)
-			{
-				UE_LOG(LogShooterReplicationGraph, Verbose, TEXT("Setting connection pawn cull distance to 0. %s"), *Pawn->GetName());
-				LastPawn = Pawn;
-				FConnectionReplicationActorInfo& ConnectionActorInfo = Params.ConnectionManager.ActorInfoMap.FindOrAdd( Pawn );
-				ConnectionActorInfo.CullDistanceSquared = 0.f;
-			}
-
-			if (Pawn != Params.Viewer.ViewTarget)
-			{
-				ReplicationActorList.ConditionalAdd(Pawn);
-			}
-
-			int32 InventoryCount = Pawn->GetInventoryCount();
-			for (int32 i = 0; i < InventoryCount; ++i)
-			{
-				AShooterWeapon* Weapon = Pawn->GetInventoryWeapon(i);
-				if (Weapon)
-				{
-					ReplicationActorList.ConditionalAdd(Weapon);
+					ReplicationActorList.ConditionalAdd(PS);
 				}
 			}
-		}
 
-		if (Params.Viewer.ViewTarget != LastPawn)
-		{
-			if (AShooterCharacter* ViewTargetPawn = Cast<AShooterCharacter>(Params.Viewer.ViewTarget))
+			FAlwaysRelevantActorInfo* LastData = PastRelevantActors.FindByKey<UNetConnection*>(CurViewer.Connection);
+
+			// We've not seen this actor before, go ahead and add them.
+			if (LastData == nullptr)
 			{
-				UE_LOG(LogShooterReplicationGraph, Verbose, TEXT("Setting connection view target pawn cull distance to 0. %s"), *ViewTargetPawn->GetName());
-				LastPawn = ViewTargetPawn;
-				FConnectionReplicationActorInfo& ConnectionActorInfo = Params.ConnectionManager.ActorInfoMap.FindOrAdd(ViewTargetPawn);
-				ConnectionActorInfo.CullDistanceSquared = 0.f;
+				FAlwaysRelevantActorInfo NewActorInfo;
+				NewActorInfo.Connection = CurViewer.Connection;
+				LastData = &(PastRelevantActors[PastRelevantActors.Add(NewActorInfo)]);
+			}
+
+			check(LastData != nullptr);
+
+			if (AShooterCharacter* Pawn = Cast<AShooterCharacter>(PC->GetPawn()))
+			{
+				ResetActorCullDistance(Pawn, LastData->LastViewer);
+
+				if (Pawn != CurViewer.ViewTarget)
+				{
+					ReplicationActorList.ConditionalAdd(Pawn);
+				}
+
+				int32 InventoryCount = Pawn->GetInventoryCount();
+				for (int32 i = 0; i < InventoryCount; ++i)
+				{
+					AShooterWeapon* Weapon = Pawn->GetInventoryWeapon(i);
+					if (Weapon)
+					{
+						ReplicationActorList.ConditionalAdd(Weapon);
+					}
+				}
+			}
+
+			if (AShooterCharacter* ViewTargetPawn = Cast<AShooterCharacter>(CurViewer.ViewTarget))
+			{
+				ResetActorCullDistance(ViewTargetPawn, LastData->LastViewTarget);
 			}
 		}
 	}
+
+	PastRelevantActors.RemoveAll([&](FAlwaysRelevantActorInfo& RelActorInfo) {
+		return RelActorInfo.Connection == nullptr;
+	});
 
 	Params.OutGatheredReplicationLists.AddReplicationActorList(ReplicationActorList);
 
@@ -824,7 +824,7 @@ void UShooterReplicationGraphNode_PlayerStateFrequencyLimiter::LogNode(FReplicat
 
 void UShooterReplicationGraph::PrintRepNodePolicies()
 {
-	UEnum* Enum = FindObject<UEnum>(ANY_PACKAGE, TEXT("EClassRepNodeMapping"));
+	UEnum* Enum = StaticEnum<EClassRepNodeMapping>();
 	if (!Enum)
 	{
 		return;

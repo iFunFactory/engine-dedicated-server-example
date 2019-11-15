@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "ShooterStyle.h"
@@ -58,6 +58,12 @@ TSharedRef< FSlateStyleSet > FShooterStyle::Create()
 		.SetColorAndOpacity(FLinearColor::White)
 		.SetShadowOffset(FIntPoint(-1,1))
 		);
+
+	Style.Set("ShooterGame.MenuStoreListTextStyle", FTextBlockStyle()
+		.SetFont(TTF_FONT("Fonts/Roboto-Black", 14))
+		.SetColorAndOpacity(FLinearColor::White)
+		.SetShadowOffset(FIntPoint(-1, 1))
+	);
 
 	Style.Set("ShooterGame.ScoreboardListTextStyle", FTextBlockStyle()
 		.SetFont(TTF_FONT("Fonts/Roboto-Black", 14))

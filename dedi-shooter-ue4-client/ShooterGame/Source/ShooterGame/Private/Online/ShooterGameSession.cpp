@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "ShooterGameSession.h"
@@ -227,6 +227,10 @@ bool AShooterGameSession::HostSession(TSharedPtr<const FUniqueNetId> UserId, FNa
 			OnCreateSessionCompleteDelegateHandle = Sessions->AddOnCreateSessionCompleteDelegate_Handle(OnCreateSessionCompleteDelegate);
 			return Sessions->CreateSession(*CurrentSessionParams.UserId, CurrentSessionParams.SessionName, *HostSettings);
 		}
+		else
+		{
+			OnCreateSessionComplete(InSessionName, false);
+		}
 	}
 #if !UE_BUILD_SHIPPING
 	else 
@@ -258,6 +262,10 @@ bool AShooterGameSession::HostSession(const TSharedPtr<const FUniqueNetId> UserI
 		{
 			OnCreateSessionCompleteDelegateHandle = Sessions->AddOnCreateSessionCompleteDelegate_Handle(OnCreateSessionCompleteDelegate);
 			bResult = Sessions->CreateSession(*UserId, InSessionName, SessionSettings);
+		}
+		else
+		{
+			OnCreateSessionComplete(InSessionName, false);
 		}
 	}
 
@@ -474,6 +482,11 @@ void AShooterGameSession::RegisterServer()
 			ShooterHostSettings->Set(SETTING_MAPNAME, GetWorld()->GetMapName(), EOnlineDataAdvertisementType::ViaOnlineService);
 			ShooterHostSettings->bAllowInvites = true;
 			ShooterHostSettings->bIsDedicated = true;
+			if (FParse::Param(FCommandLine::Get(), TEXT("forcelan")))
+			{
+				UE_LOG(LogOnlineGame, Log, TEXT("Registering server as a LAN server"));
+				ShooterHostSettings->bIsLANMatch = true;
+			}
 			HostSettings = ShooterHostSettings;
 			OnCreateSessionCompleteDelegateHandle = SessionInt->AddOnCreateSessionCompleteDelegate_Handle(OnCreateSessionCompleteDelegate);
 			SessionInt->CreateSession(0, NAME_GameSession, *HostSettings);

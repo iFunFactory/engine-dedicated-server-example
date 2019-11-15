@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "BTDecorator_HasLoSTo.h"
@@ -111,7 +111,6 @@ bool UBTDecorator_HasLoSTo::LOSTrace(AActor* InActor, AActor* InEnemyActor, cons
 		{
 			// Perform trace to retrieve hit info
 			FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(AILosTrace), true, InActor);
-			TraceParams.bTraceAsyncScene = true;
 			
 			TraceParams.bReturnPhysicalMaterial = true;
 			TraceParams.AddIgnoredActor(MyBot);

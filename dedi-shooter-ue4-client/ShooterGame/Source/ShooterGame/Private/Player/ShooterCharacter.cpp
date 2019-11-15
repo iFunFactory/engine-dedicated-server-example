@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "Weapons/ShooterWeapon.h"
@@ -76,7 +76,9 @@ void AShooterCharacter::PostInitializeComponents()
 	if (Role == ROLE_Authority)
 	{
 		Health = GetMaxHealth();
-		SpawnDefaultInventory();
+
+		// Needs to happen after character is added to repgraph
+		GetWorldTimerManager().SetTimerForNextTick(this, &AShooterCharacter::SpawnDefaultInventory);
 	}
 
 	// set initial mesh visibility (3rd person view)
@@ -350,7 +352,9 @@ void AShooterCharacter::OnDeath(float KillingDamage, struct FDamageEvent const& 
 			UShooterDamageType *DamageType = Cast<UShooterDamageType>(DamageEvent.DamageTypeClass->GetDefaultObject());
 			if (DamageType && DamageType->KilledForceFeedback && PC->IsVibrationEnabled())
 			{
-				PC->ClientPlayForceFeedback(DamageType->KilledForceFeedback, false, false, "Damage");
+				FForceFeedbackParameters FFParams;
+				FFParams.Tag = "Damage";
+				PC->ClientPlayForceFeedback(DamageType->KilledForceFeedback, FFParams);
 			}
 		}
 	}
@@ -427,7 +431,9 @@ void AShooterCharacter::PlayHit(float DamageTaken, struct FDamageEvent const& Da
 			UShooterDamageType *DamageType = Cast<UShooterDamageType>(DamageEvent.DamageTypeClass->GetDefaultObject());
 			if (DamageType && DamageType->HitForceFeedback && PC->IsVibrationEnabled())
 			{
-				PC->ClientPlayForceFeedback(DamageType->HitForceFeedback, false, false, "Damage");
+				FForceFeedbackParameters FFParams;
+				FFParams.Tag = "Damage";
+				PC->ClientPlayForceFeedback(DamageType->HitForceFeedback, FFParams);
 			}
 		}
 	}
