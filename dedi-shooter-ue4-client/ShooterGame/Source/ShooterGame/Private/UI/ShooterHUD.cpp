@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "UI/ShooterHUD.h"
@@ -550,10 +550,10 @@ void AShooterHUD::DrawHUD()
 			if(SessionSubsystem.IsValid())
 			{
 				FNamedOnlineSession * Session = SessionSubsystem->GetNamedSession(NAME_GameSession);
-				if(Session)
+				if(Session && Session->SessionInfo.IsValid())
 				{
 					NetModeDesc += TEXT("\nSession: ");
-					NetModeDesc += Session->SessionInfo->GetSessionId().ToString();
+					NetModeDesc += Session->GetSessionIdStr();
 				}
 			}
 

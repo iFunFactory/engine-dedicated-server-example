@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "Player/ShooterPlayerController.h"
@@ -13,6 +13,7 @@
 #include "Online.h"
 #include "OnlineAchievementsInterface.h"
 #include "OnlineEventsInterface.h"
+#include "OnlineStatsInterface.h"
 #include "OnlineIdentityInterface.h"
 #include "OnlineSessionInterface.h"
 #include "ShooterGameInstance.h"
@@ -810,6 +811,7 @@ void AShooterPlayerController::ClientGameEnded_Implementation(class AActor* EndG
 	UpdateSaveFileOnGameEnd(bIsWinner);
 	UpdateAchievementsOnGameEnd();
 	UpdateLeaderboardsOnGameEnd();
+	UpdateStatsOnGameEnd(bIsWinner);
 
 	// Flag that the game has just ended (if it's ended due to host loss we want to wait for ClientReturnToMainMenu_Implementation first, incase we don't want to process)
 	bGameEndedFrame = true;
@@ -928,6 +930,8 @@ void AShooterPlayerController::GetLifetimeReplicatedProps( TArray< FLifetimeProp
 
 	DOREPLIFETIME_CONDITION( AShooterPlayerController, bInfiniteAmmo, COND_OwnerOnly );
 	DOREPLIFETIME_CONDITION( AShooterPlayerController, bInfiniteClip, COND_OwnerOnly );
+
+	DOREPLIFETIME(AShooterPlayerController, bHealthRegen);
 }
 
 void AShooterPlayerController::Suicide()
@@ -1312,6 +1316,35 @@ void AShooterPlayerController::UpdateLeaderboardsOnGameEnd()
 		}
 	}
 }
+
+void AShooterPlayerController::UpdateStatsOnGameEnd(bool bIsWinner)
+{
+	const auto Stats = Online::GetStatsInterface();
+	ULocalPlayer* LocalPlayer = Cast<ULocalPlayer>(Player);
+	AShooterPlayerState* ShooterPlayerState = Cast<AShooterPlayerState>(PlayerState);
+
+	if (Stats.IsValid() && LocalPlayer != nullptr && ShooterPlayerState != nullptr)
+	{
+		auto UniqueId = LocalPlayer->GetCachedUniqueNetId();
+
+		if (UniqueId.IsValid() )
+		{
+			TArray<FOnlineStatsUserUpdatedStats> UpdatedUserStats;
+
+			FOnlineStatsUserUpdatedStats& UpdatedStats = UpdatedUserStats.Emplace_GetRef( UniqueId.GetUniqueNetId().ToSharedRef() );
+			UpdatedStats.Stats.Add( TEXT("Kills"), FOnlineStatUpdate( ShooterPlayerState->GetKills(), FOnlineStatUpdate::EOnlineStatModificationType::Sum ) );
+			UpdatedStats.Stats.Add( TEXT("Deaths"), FOnlineStatUpdate( ShooterPlayerState->GetDeaths(), FOnlineStatUpdate::EOnlineStatModificationType::Sum ) );
+			UpdatedStats.Stats.Add( TEXT("RoundsPlayed"), FOnlineStatUpdate( 1, FOnlineStatUpdate::EOnlineStatModificationType::Sum ) );
+			if (bIsWinner)
+			{
+				UpdatedStats.Stats.Add( TEXT("RoundsWon"), FOnlineStatUpdate( 1, FOnlineStatUpdate::EOnlineStatModificationType::Sum ) );
+			}
+
+			Stats->UpdateStats( UniqueId.GetUniqueNetId().ToSharedRef(), UpdatedUserStats, FOnlineStatsUpdateStatsComplete() );
+		}
+	}
+}
+
 
 void AShooterPlayerController::UpdateSaveFileOnGameEnd(bool bIsWinner)
 {

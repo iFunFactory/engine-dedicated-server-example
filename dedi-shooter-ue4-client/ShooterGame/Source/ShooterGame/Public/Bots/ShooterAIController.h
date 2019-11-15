@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "AIController.h"
@@ -23,11 +23,14 @@ public:
 
 	// Begin AController interface
 	virtual void GameHasEnded(class AActor* EndGameFocus = NULL, bool bIsWinner = false) override;
-	virtual void Possess(class APawn* InPawn) override;
-	virtual void UnPossess() override;
 	virtual void BeginInactiveState() override;
+
+protected:
+	virtual void OnPossess(class APawn* InPawn) override;
+	virtual void OnUnPossess() override;
 	// End APlayerController interface
 
+public:
 	void Respawn();
 
 	void CheckAmmo(const class AShooterWeapon* CurrentWeapon);
@@ -46,7 +49,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = Behavior)
 	bool FindClosestEnemyWithLOS(AShooterCharacter* ExcludeEnemy);
-		
+
 	bool HasWeaponLOSToEnemy(AActor* InEnemyActor, const bool bAnyEnemy) const;
 
 	// Begin AAIController interface

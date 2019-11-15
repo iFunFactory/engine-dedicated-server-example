@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "Weapons/ShooterWeapon.h"
@@ -411,6 +411,21 @@ void AShooterWeapon::UseAmmo()
 	}
 }
 
+void AShooterWeapon::HandleReFiring()
+{
+	// Update TimerIntervalAdjustment
+	UWorld* MyWorld = GetWorld();
+
+	float SlackTimeThisFrame = FMath::Max(0.0f, (MyWorld->TimeSeconds - LastFireTime) - WeaponConfig.TimeBetweenShots);
+
+	if (bAllowAutomaticWeaponCatchup)
+	{
+		TimerIntervalAdjustment -= SlackTimeThisFrame;
+	}
+
+	HandleFiring();
+}
+
 void AShooterWeapon::HandleFiring()
 {
 	if ((CurrentAmmoInClip > 0 || HasInfiniteClip() || HasInfiniteAmmo()) && CanFire())
@@ -453,6 +468,10 @@ void AShooterWeapon::HandleFiring()
 			OnBurstFinished();
 		}
 	}
+	else
+	{
+		OnBurstFinished();
+	}
 
 	if (MyPawn && MyPawn->IsLocallyControlled())
 	{
@@ -472,7 +491,8 @@ void AShooterWeapon::HandleFiring()
 		bRefiring = (CurrentState == EWeaponState::Firing && WeaponConfig.TimeBetweenShots > 0.0f);
 		if (bRefiring)
 		{
-			GetWorldTimerManager().SetTimer(TimerHandle_HandleFiring, this, &AShooterWeapon::HandleFiring, WeaponConfig.TimeBetweenShots, false);
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleFiring, this, &AShooterWeapon::HandleReFiring, FMath::Max<float>(WeaponConfig.TimeBetweenShots + TimerIntervalAdjustment, SMALL_NUMBER), false);
+			TimerIntervalAdjustment = 0.f;
 		}
 	}
 
@@ -588,13 +608,16 @@ void AShooterWeapon::OnBurstFinished()
 	BurstCounter = 0;
 
 	// stop firing FX locally, unless it's a dedicated server
-	if (GetNetMode() != NM_DedicatedServer)
-	{
+	//if (GetNetMode() != NM_DedicatedServer)
+	//{
 		StopSimulatingWeaponFire();
-	}
+	//}
 	
 	GetWorldTimerManager().ClearTimer(TimerHandle_HandleFiring);
 	bRefiring = false;
+
+	// reset firing interval adjustment
+	TimerIntervalAdjustment = 0.0f;
 }
 
 
@@ -728,7 +751,6 @@ FHitResult AShooterWeapon::WeaponTrace(const FVector& StartTrace, const FVector&
 
 	// Perform trace to retrieve hit info
 	FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(WeaponTrace), true, Instigator);
-	TraceParams.bTraceAsyncScene = true;
 	TraceParams.bReturnPhysicalMaterial = true;
 
 	FHitResult Hit(ForceInit);
@@ -850,7 +872,9 @@ void AShooterWeapon::SimulateWeaponFire()
 		}
 		if (FireForceFeedback != NULL && PC->IsVibrationEnabled())
 		{
-			PC->ClientPlayForceFeedback(FireForceFeedback, false, false, "Weapon");
+			FForceFeedbackParameters FFParams;
+			FFParams.Tag = "Weapon";
+			PC->ClientPlayForceFeedback(FireForceFeedback, FFParams);
 		}
 	}
 }

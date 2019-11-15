@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -73,7 +73,7 @@ public:
 
 private:
 
-	EClassRepNodeMapping GetMappingPolicy(const UClass* Class);
+	EClassRepNodeMapping GetMappingPolicy(UClass* Class);
 
 	bool IsSpatialized(EClassRepNodeMapping Mapping) const { return Mapping >= EClassRepNodeMapping::Spatialize_Static; }
 
@@ -112,6 +112,10 @@ private:
 
 	UPROPERTY()
 	AActor* LastPawn = nullptr;
+
+	/** List of previously (or currently if nothing changed last tick) focused actor data per connection */
+	UPROPERTY()
+	TArray<FAlwaysRelevantActorInfo> PastRelevantActors;
 
 	bool bInitializedPlayerState = false;
 };

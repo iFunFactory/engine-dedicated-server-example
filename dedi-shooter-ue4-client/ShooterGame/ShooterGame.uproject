@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "4.21",
+	"EngineAssociation": "{30ECEA7A-43EC-13E2-6105-A09DD891BC27}",
 	"Category": "Samples",
 	"Description": "",
 	"Modules": [
@@ -66,6 +66,10 @@
 		},
 		{
 			"Name": "ReplicationGraph",
+			"Enabled": true
+		},
+		{
+			"Name": "Gauntlet",
 			"Enabled": true
 		},
 		{

@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -66,6 +66,10 @@ public:
 
 	//FTicker Funcs
 	virtual void Tick(float DeltaSeconds) override;	
+
+	virtual	void BeginDestroy() override;
+	virtual void DetachViewportClient() override;
+	void ReleaseSlateResources();
 
 #if WITH_EDITOR
 	virtual void DrawTransition(class UCanvas* Canvas) override;

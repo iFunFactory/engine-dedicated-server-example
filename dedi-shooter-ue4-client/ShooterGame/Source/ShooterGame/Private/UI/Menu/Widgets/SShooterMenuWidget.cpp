@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "Engine/Console.h"
@@ -241,7 +241,7 @@ bool SShooterMenuWidget::ProfileUISwap(const int ControllerIndex) const
 {
 	if(IsProfileSwapActive())
 	{
-		const FOnLoginUIClosedDelegate Delegate = FOnLoginUIClosedDelegate::CreateSP( this, &SShooterMenuWidget::HandleProfileUISwapClosed );
+		const FOnLoginUIClosedDelegate Delegate = FOnLoginUIClosedDelegate::CreateSP( const_cast<SShooterMenuWidget*>(this), &SShooterMenuWidget::HandleProfileUISwapClosed );
 		if ( ShooterUIHelpers::Get().ProfileSwapUI(ControllerIndex, false, &Delegate) )
 		{
 			UShooterGameInstance* GameInstance = PlayerOwner.IsValid() ? Cast< UShooterGameInstance >( PlayerOwner->GetGameInstance() ) : nullptr;
@@ -641,12 +641,12 @@ void SShooterMenuWidget::Tick( const FGeometry& AllottedGeometry, const double I
 		}
 	}
 
-	if (GEngine && GEngine->GameViewport && GEngine->GameViewport->ViewportFrame)
+	if (GEngine && GEngine->GameViewport)
 	{
-		FViewport* Viewport = GEngine->GameViewport->ViewportFrame->GetViewport();
-		if (Viewport)
+		FVector2D Size = FVector2D::ZeroVector;
+		GEngine->GameViewport->GetViewportSize(Size);
+		if (!Size.IsZero())
 		{
-			const FVector2D Size = Viewport->GetSizeXY();
 			ScreenRes = (Size / AllottedGeometry.Scale).IntPoint();
 		}
 	}

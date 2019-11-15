@@ -1,4 +1,4 @@
-// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -33,7 +33,10 @@ class AShooterGameMode : public AGameMode
 	/** starts match warmup */
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 
-  virtual APlayerController* Login(UPlayer* NewPlayer, ENetRole InRemoteRole, const FString& Portal, const FString& Options, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
+	virtual APlayerController* Login(UPlayer* NewPlayer, ENetRole InRemoteRole, const FString& Portal, const FString& Options, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
+
+	/** Tries to spawn the player's pawn */
+	virtual void RestartPlayer(AController* NewPlayer) override;
 
 	/** select best spawn point for player */
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
@@ -64,6 +67,9 @@ class AShooterGameMode : public AGameMode
 
 	/** starts new match */
 	virtual void HandleMatchHasStarted() override;
+
+	/** new player joins */
+	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 
 	/** hides the onscreen hud and restarts the map */
 	virtual void RestartGame() override;
