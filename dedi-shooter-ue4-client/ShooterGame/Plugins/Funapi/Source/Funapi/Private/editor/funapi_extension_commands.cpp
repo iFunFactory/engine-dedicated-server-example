@@ -4,12 +4,13 @@
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
+#if FUNAPI_UE4
 #if WITH_EDITOR
 
+#include "FunapiPrivatePCH.h"
 #include "funapi_plugin.h"
 
 #include "curl/curl.h"
-
 
 #include "Commands/InputChord.h"
 #include "HAL/PlatformFilemanager.h"
@@ -159,3 +160,4 @@ void Ffunapi_excute_actions::DownloadRootCertificate()
 #undef LOCTEXT_NAMESPACE
 
 #endif // WITH_EDITOR
+#endif //FUNAPI_UE4

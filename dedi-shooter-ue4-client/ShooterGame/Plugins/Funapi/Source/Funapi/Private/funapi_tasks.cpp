@@ -11,6 +11,7 @@
 #include "funapi_tasks.h"
 #include "funapi_utils.h"
 #include "funapi_session.h"
+#include "funapi_socket.h"
 #include "funapi_announcement.h"
 #include "funapi_downloader.h"
 
@@ -45,25 +46,35 @@ FunapiTasksImpl::~FunapiTasksImpl() {
 }
 
 
-void FunapiTasksImpl::Update() {
+void FunapiTasksImpl::Update()
+{
   std::shared_ptr<std::function<bool()>> task = nullptr;
+  fun::queue<std::shared_ptr<std::function<bool()>>> update_queue;
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    queue_.swap(update_queue);
+  }
 
-  while (true) {
+  while (true)
+  {
     {
-      std::unique_lock<std::mutex> lock(mutex_);
-      if (queue_.empty()) {
+      if (update_queue.empty())
+      {
         break;
       }
-      else {
-        task = queue_.front();
-        queue_.pop();
+      else
+      {
+        task = update_queue.front();
+        update_queue.pop();
       }
     }
 
-    if (task) {
+    if (task)
+    {
       if ((*task)() == false) break;
     }
-    else {
+    else
+    {
       break;
     }
   }
@@ -194,7 +205,19 @@ void FunapiThreadImpl::JoinThread() {
 
 
 void FunapiThreadImpl::Thread() {
-  while (run_) {
+  bool is_network = false;
+  if (thread_id_.compare("_network") == 0)
+  {
+    is_network = true;
+  }
+
+  while (run_)
+  {
+    if (is_network)
+    {
+      FunapiSocket::Select();
+    }
+    else
     {
       std::unique_lock<std::mutex> lock(mutex_);
       if (queue_.empty()) {

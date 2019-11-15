@@ -227,30 +227,69 @@ bool FunapiUtil::SeqLess(const uint32_t x, const uint32_t y) {
   return (int32_t)(y - x) > 0;
 }
 
-bool FunapiUtil::IsFileExists(const fun::string &file_name) {
+
 #ifdef FUNAPI_COCOS2D
+bool FunapiUtil::IsFileExists(const fun::string &file_name)
+{
   return cocos2d::FileUtils::getInstance()->isFileExist(file_name.c_str());
+}
 #endif
 
+
 #ifdef FUNAPI_UE4
+bool FunapiUtil::IsFileExists(const fun::string &file_name)
+{
   return FPlatformFileManager::Get().GetPlatformFile().FileExists(ANSI_TO_TCHAR(file_name.c_str()));
-#endif
-
-  return false;
 };
-
-
-long FunapiUtil::GetFileSize(const fun::string &file_name) {
-#ifdef FUNAPI_COCOS2D
-  return cocos2d::FileUtils::getInstance()->getFileSize(file_name.c_str());
 #endif
+
+
+#ifdef FUNAPI_COCOS2D
+long FunapiUtil::GetFileSize(const fun::string &file_name)
+{
+  return cocos2d::FileUtils::getInstance()->getFileSize(file_name.c_str());
+};
+#endif
+
 
 #ifdef FUNAPI_UE4
+long FunapiUtil::GetFileSize(const fun::string &file_name)
+{
   return FPlatformFileManager::Get().GetPlatformFile().FileSize(ANSI_TO_TCHAR(file_name.c_str()));
+}
 #endif
 
-  return 0;
-};
+
+#ifdef FUNAPI_COCOS2D
+bool FunapiUtil::IsDirectoryExists(const fun::string &dir_name)
+{
+  return cocos2d::FileUtils::getInstance()->isDirectoryExist(dir_name);
+}
+#endif
+
+
+#ifdef FUNAPI_UE4
+bool FunapiUtil::IsDirectoryExists(const fun::string &dir_name)
+{
+  return FPlatformFileManager::Get().GetPlatformFile().DirectoryExists(ANSI_TO_TCHAR(dir_name.c_str()));
+}
+#endif
+
+
+#ifdef FUNAPI_COCOS2D
+bool FunapiUtil::CreateDirectory(const fun::string &dir_name)
+{
+  return cocos2d::FileUtils::getInstance()->createDirectory(dir_name);
+}
+#endif
+
+
+#ifdef FUNAPI_UE4
+bool FunapiUtil::CreateDirectory(const fun::string &dir_name)
+{
+  return FPlatformFileManager::Get().GetPlatformFile().CreateDirectory(UTF8_TO_TCHAR(dir_name.c_str()));
+}
+#endif
 
 
 ////////////////////////////////////////////////////////////////////////////////

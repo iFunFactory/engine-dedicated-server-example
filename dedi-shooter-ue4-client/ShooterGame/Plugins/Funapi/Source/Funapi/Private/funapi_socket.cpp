@@ -1,62 +1,28 @@
-// Copyright (C) 2013-2018 iFunFactory Inc. All Rights Reserved.
+// Copyright (C) 2013-2019 iFunFactory Inc. All Rights Reserved.
 //
 // This work is confidential and proprietary to iFunFactory Inc. and
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
 #ifndef FUNAPI_UE4_PLATFORM_PS4
+#ifndef FUNAPI_PLATFORM_WINDOWS
 
 #ifdef FUNAPI_UE4
 #include "FunapiPrivatePCH.h"
 #endif
 
+#include "funapi_send_flag_manager.h"
 #include "funapi_socket.h"
 #include "funapi_utils.h"
 
 #ifdef FUNAPI_UE4
-#if PLATFORM_WINDOWS
-#include "WindowsHWrapper.h"
-#include "AllowWindowsPlatformTypes.h"
-#endif
 // Work around a conflict between a UI namespace defined by engine code and a typedef in OpenSSL
 #define UI UI_ST
 THIRD_PARTY_INCLUDES_START
-#if FUNAPI_UE4_PLATFORM_ANDROID == 0
 #include "openssl/ssl.h"
 #include "openssl/err.h"
-#else // FUNAPI_UE4_PLATFORM_ANDROID
-// 안드로이드 환경일떄 랩핑된 openssl 을 사용한다.
-#include "openssl/openssl_wrapper.h"
-
-#define SSL_CTX_new Fun_SSL_CTX_new
-#define SSL_new Fun_SSL_new
-#define SSL_set_fd Fun_SSL_set_fd
-#define SSL_library_init Fun_SSL_library_init
-#define SSL_shutdown Fun_SSL_shutdown
-#define SSL_free Fun_SSL_free
-#define SSL_CTX_free Fun_SSL_CTX_free
-#define SSL_connect Fun_SSL_connect
-#define SSL_write Fun_SSL_write
-#define SSL_read Fun_SSL_read
-#define SSLv23_client_method Fun_SSLv23_client_method
-#define SSL_get_current_cipher Fun_SSL_get_current_cipher
-#define SSL_CIPHER_get_name Fun_SSL_CIPHER_get_name
-#define SSL_CTX_load_verify_locations Fun_SSL_CTX_load_verify_locations
-#define SSL_CTX_set_verify Fun_SSL_CTX_set_verify
-#define SSL_CTX_set_verify_depth Fun_SSL_CTX_set_verify_depth
-#define SSL_get_verify_result Fun_SSL_get_verify_result
-#define SSL_get_peer_certificate Fun_SSL_get_peer_certificate
-#define SSL_get_error Fun_SSL_get_error
-#define ERR_error_string Fun_ERR_error_string
-#define SSL_load_error_strings Fun_SSL_load_error_strings
-#define ERR_get_error Fun_ERR_get_error
-#endif // FUNAPI_UE4_PLATFORM_ANDROID
-THIRD_PARTY_INCLUDES_END
 #ifdef UI
 #undef UI
-#endif
-#if PLATFORM_WINDOWS
-#include "HideWindowsPlatformTypes.h"
 #endif
 #else // FUNAPI_UE4
 #include "openssl/ssl.h"
@@ -227,10 +193,16 @@ fun::vector<std::shared_ptr<FunapiSocketImpl>> FunapiSocketImpl::GetSocketImpls(
 }
 
 
-bool FunapiSocketImpl::Select() {
+// extern function in funapi_session.cpp
+void OnSessionTicked();
+bool FunapiSocketImpl::Select()
+{
+  static FunapiTimer session_tick_timer;
+
   auto v_sockets = FunapiSocketImpl::GetSocketImpls();
 
-  if (!v_sockets.empty()) {
+  if (!v_sockets.empty())
+  {
     int max_fd = -1;
 
     fd_set rset;
@@ -241,17 +213,37 @@ bool FunapiSocketImpl::Select() {
     FD_ZERO(&wset);
     FD_ZERO(&eset);
 
+    // Add send fd event
+    std::shared_ptr<FunapiSendFlagManager> send_flag_manager =
+      FunapiSendFlagManager::Get();
+    bool initialized_send_event = send_flag_manager->IsInitialized();
+    if (initialized_send_event)
+    {
+      int* pipe_fds = send_flag_manager->GetPipFds();
+
+      // pipe_fds 는 int[2] 크기를 가진다.
+      for (int i = 0; i < 2; ++i)
+      {
+        int fd = pipe_fds[i];
+        if (fd > max_fd)
+          max_fd = fd;
+
+        FD_SET(fd, &rset);
+        FD_SET(fd, &eset);
+      }
+    }
+
     fun::vector<std::shared_ptr<FunapiSocketImpl>> v_select_sockets;
     for (auto s : v_sockets)
     {
       if (s->IsReadySelect())
       {
         int fd = s->GetSocket();
-        if (fd > 0) {
+        if (fd > 0)
+        {
           if (fd > max_fd) max_fd = fd;
 
           FD_SET(fd, &rset);
-          FD_SET(fd, &wset);
           FD_SET(fd, &eset);
 
           v_select_sockets.push_back(s);
@@ -261,12 +253,44 @@ bool FunapiSocketImpl::Select() {
 
     if (!v_select_sockets.empty())
     {
-      struct timeval timeout = { 0, 0 };
-      if (select(max_fd + 1, &rset, &wset, &eset, &timeout) > 0)
+      struct timeval timeout { 0, 500 };
+      int result = select(max_fd + 1, &rset, NULL, &eset, &timeout);
+
+      // ERROR
+      if (result == -1)
       {
-        for (auto s : v_select_sockets) {
-          s->OnSelect(rset, wset, eset);
+        DebugUtils::Log("Wait for events failed");
+        return false;
+      }
+
+      // PING
+      if (session_tick_timer.IsExpired())
+      {
+        // Update 는 1초 간격을 유지.
+        // Ping TimeOut 은 OnSessionTicked 함수 안에서 확인.
+        OnSessionTicked();
+        session_tick_timer.SetTimer(1);
+      }
+
+      // SEND
+      if (initialized_send_event)
+      {
+        int* pipe_fds = send_flag_manager->GetPipFds();
+        if (FD_ISSET(pipe_fds[0], &rset))
+        {
+          send_flag_manager->ResetWakeUp();
+
+          for (auto s : v_select_sockets)
+          {
+            s->OnSend();
+          }
+          return true;
         }
+      }
+
+      // RECV
+      for (auto s : v_select_sockets) {
+        s->OnSelect(rset, wset, eset);
       }
 
       return true;
@@ -400,16 +424,13 @@ bool FunapiSocketImpl::InitSocket(struct addrinfo *info,
 
 void FunapiSocketImpl::SocketSelect(fd_set rset,
                                     fd_set wset,
-                                    fd_set eset) {
-  if (socket_ > 0) {
-    if (FD_ISSET(socket_, &rset)) {
+                                    fd_set eset)
+{
+  if (socket_ > 0)
+  {
+    if (FD_ISSET(socket_, &rset))
+    {
       OnRecv();
-    }
-  }
-
-  if (socket_ > 0) {
-    if (FD_ISSET(socket_, &wset)) {
-      OnSend();
     }
   }
 }
@@ -1216,6 +1237,7 @@ void FunapiTcp::OnSelect(const fd_set rset, const fd_set wset, const fd_set eset
   impl_->OnSelect(rset, wset, eset);
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 // FunapiUdp implementation.
 
@@ -1266,4 +1288,5 @@ void FunapiUdp::OnSelect(const fd_set rset, const fd_set wset, const fd_set eset
 
 }  // namespace fun
 
-#endif
+#endif // FUNAPI_PLATFORM_WINDOWS
+#endif // FUNAPI_UE4_PLATFORM_PS4
