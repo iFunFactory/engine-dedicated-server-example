@@ -9,6 +9,7 @@
 #endif
 
 #include "funapi_session.h"
+#include "funapi_send_flag_manager.h"
 #include "funapi_utils.h"
 #include "funapi_tasks.h"
 #include "funapi_http.h"
@@ -472,8 +473,24 @@ FunapiMessage::FunapiMessage(const FunEncoding encoding, const fun::vector<uint8
     }
     else if (encoding_ == FunEncoding::kProtobuf)
     {
-        protobuf_message_ = std::make_shared<FunMessage>();
-        protobuf_message_->ParseFromArray(body.data(), static_cast<int>(body.size()));
+        std::shared_ptr<FunMessage> protobuf_message = std::make_shared<FunMessage>();
+
+        int body_size = static_cast<int>(body.size());
+        if (body.back() == '\0')
+        {
+          // Json deserialize 의 조건 null-terminate string 을 만족하는 동시에
+          // protobuf deserialize 에 영향을 주지 않기 위해 다음과 같이 구현됨.
+          //
+          // body(메세지 버퍼) 는 null-terminate 캐릭터가 추가되고
+          // protobuf 는 null-terminate 캐릭터를 제외한 데이터를 이용해 deserialize
+
+          body_size -= 1;
+        }
+
+        if (protobuf_message->ParseFromArray(body.data(), body_size))
+        {
+          protobuf_message_ = protobuf_message;
+        }
     }
     else
     {
@@ -759,7 +776,6 @@ class FunapiSessionImpl : public std::enable_shared_from_this<FunapiSessionImpl>
   void Update();
   void UpdateTasks();
   void UpdateTrasnports();
-  void UpdateSocketSelect();
   static void UpdateAll();
 
   void SendMessage(const fun::string &msg_type,
@@ -981,6 +997,8 @@ class FunapiSessionImpl : public std::enable_shared_from_this<FunapiSessionImpl>
   fun::vector<std::shared_ptr<FunapiUnsentQueue>> redirect_queues_;
   fun::vector<fun::string> redirect_cur_tags_;
   fun::vector<fun::string> redirect_target_tags_;
+
+  std::shared_ptr<FunapiSendFlagManager> send_flag_manager_ = nullptr;
 
   void OnRedirect();
 
@@ -1500,19 +1518,54 @@ bool FunapiTransport::TryToDecodeHeader(fun::vector<uint8_t> &receiving,
 bool FunapiTransport::TryToDecodeBody(fun::vector<uint8_t> &receiving,
                                       int &next_decoding_offset,
                                       bool &header_decoded,
-                                      HeaderFields &header_fields) {
+                                      HeaderFields &header_fields)
+{
   int received_size = static_cast<int>(receiving.size());
-  // Version header
-  HeaderFields::const_iterator it = header_fields.find(kVersionHeaderField);
-  assert(it != header_fields.end());
-  int version = atoi(it->second.c_str());
-  assert(version == static_cast<int>(FunapiVersion::kProtocolVersion));
+  HeaderFields::const_iterator version_field_itr = header_fields.find(kVersionHeaderField);
+  if (version_field_itr == header_fields.end())
+  {
+    header_decoded_ = false;
+    header_fields.clear();
+    Stop(true, FunapiError::Create(FunapiError::ErrorType::kDeserialize, 0, "Message version header field not found. Stopping the transport."));
+    return true;
+  }
 
-  // Length header
-  it = header_fields.find(kLengthHeaderField);
-  int body_length = atoi(it->second.c_str());
+  long int version = strtol(version_field_itr->second.c_str(), NULL, 10);
+  if (version != static_cast<int>(FunapiVersion::kProtocolVersion))
+  {
+    header_decoded_ = false;
+    header_fields.clear();
+    fun::stringstream ss;
+    ss << "Protocol version was worng" << "(server protocol version: " << version << "). Stopping the transport.";
+    Stop(true, FunapiError::Create(FunapiError::ErrorType::kDeserialize, 0, ss.str()));
+    return true;
+  }
+
+  HeaderFields::const_iterator length_field_itr = header_fields.find(kLengthHeaderField);
+  if (length_field_itr == header_fields.end())
+  {
+    header_decoded_ = false;
+    header_fields.clear();
+    Stop(true, FunapiError::Create(FunapiError::ErrorType::kDeserialize, 0, "Message length header field not found. Stopping the transport."));
+    return true;
+  }
+
+  long int body_length = strtol(length_field_itr->second.c_str(), NULL, 10);
+  if (body_length == 0)
+  {
+    /*
+      문자열이 변환이 유효 했는지 확인.
+    */
+    if (length_field_itr->second.size() != 1 || length_field_itr->second.at(0) != '0')
+    {
+      header_decoded_ = false;
+      header_fields.clear();
+      Stop(true, FunapiError::Create(FunapiError::ErrorType::kDeserialize, 0, "Message header field was invalid. Stopping the transport."));
+      return true;
+    }
+  }
+
   // DebugUtils::Log("We need %d bytes for a message body.", body_length);
-
   if (received_size - next_decoding_offset < body_length)
   {
     // Need more bytes.
@@ -1918,6 +1971,11 @@ void FunapiTransport::OnReceived(const TransportProtocol protocol,
     }
   } else if (encoding == FunEncoding::kProtobuf) {
     auto proto = message->GetProtobufMessage();
+    if (!proto)
+    {
+      DebugUtils::Log("Protobuf ParseError");
+      return;
+    }
 
     msg_type = proto->msgtype();
 
@@ -2460,6 +2518,12 @@ void FunapiTcpTransport::Send(bool send_all)
 
   if (!send_handshake_queue_->Empty())
   {
+    // 이후 메시지를 처리하기 위해서 다시 Send 플레그를 올려준다.
+    std::shared_ptr<FunapiSendFlagManager> send_flag_manager =
+      FunapiSendFlagManager::Get();
+
+    send_flag_manager->WakeUp();
+
     while (!send_handshake_queue_->Empty())
     {
       msg = send_handshake_queue_->Front();
@@ -2475,6 +2539,12 @@ void FunapiTcpTransport::Send(bool send_all)
   }
   else if (!send_priority_queue_->Empty())
   {
+    // 이후 메시지를 처리하기 위해서 다시 Send 플레그를 올려준다.
+    std::shared_ptr<FunapiSendFlagManager> send_flag_manager =
+      FunapiSendFlagManager::Get();
+
+    send_flag_manager->WakeUp();
+
     if (false == encrytion_->IsHandShakeCompleted())
     {
       return;
@@ -2769,8 +2839,13 @@ void FunapiUdpTransport::Send(bool send_all) {
 
   while (!send_handshake_queue_->Empty())
   {
-    msg = send_handshake_queue_->Front();
+    // 이후 메시지를 처리하기 위해서 다시 Send 플레그를 올려준다.
+    std::shared_ptr<FunapiSendFlagManager> send_flag_manager =
+        FunapiSendFlagManager::Get();
 
+    send_flag_manager->WakeUp();
+
+    msg = send_handshake_queue_->Front();
     if (FunapiTransport::EncodeThenSendMessage(msg)) {
       send_handshake_queue_->PopFront();
     }
@@ -3481,6 +3556,10 @@ void FunapiSessionImpl::Initialize()
     session_id_ = FunapiSessionId::Create();
 
     network_thread_ = FunapiThread::Get("_network");
+
+    // FunapiSession : FunapiSendFlagManager  -> N : 1 의 구조를 가진다.
+    // 모든 FunapiSession 이 제거 되었을 때 FunapiSendFlagManager 도 제거된다.
+    send_flag_manager_ = FunapiSendFlagManager::Get();
 }
 
 
@@ -3761,6 +3840,7 @@ void FunapiSessionImpl::SendMessage(std::shared_ptr<FunapiMessage> &message, con
         if (transport)
         {
             transport->SendMessage(message, priority, handshake);
+            send_flag_manager_->WakeUp();
         }
         else
         {
@@ -3781,11 +3861,12 @@ void FunapiSessionImpl::SendMessage(std::shared_ptr<FunapiMessage> &message, con
             }
         }
 
-        PushTaskQueue([this, protocol_for_send, message]()->bool
+        std::shared_ptr<FunapiTransport> transport = GetTransport(protocol_for_send);
+        if (transport)
         {
-            send_queues_[static_cast<int>(protocol_for_send)]->PushBack(message);
-            return true;
-        });
+          transport->SendMessage(message, priority, handshake);
+          send_flag_manager_->WakeUp();
+        }
     }
 }
 
@@ -4077,7 +4158,12 @@ void FunapiSessionImpl::OnClientPingMessage(const TransportProtocol protocol,
     timestamp_ms = ping_message.timestamp();
   }
 
-  ping_time_ms = (std::chrono::system_clock::now().time_since_epoch().count() - timestamp_ms) / 1000;
+  auto now =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch()
+      ).count();
+
+  ping_time_ms = now - timestamp_ms;
 
   // DebugUtils::Log("Receive %s ping - timestamp:%lld time=%lld ms", "Tcp", timestamp_ms, ping_time_ms);
 }
@@ -4450,24 +4536,11 @@ void FunapiSessionImpl::UpdateTrasnports() {
 }
 
 
-void FunapiSessionImpl::UpdateSocketSelect() {
-  if (network_thread_) {
-    if (network_thread_->Size() == 0) {
-      network_thread_->Push([]()->bool {
-        FunapiSocket::Select();
-        return true;
-      });
-    }
-  }
-}
-
-
 void FunapiSessionImpl::Update() {
   auto self = shared_from_this();
 
   UpdateTasks();
   UpdateTrasnports();
-  UpdateSocketSelect();
 }
 
 
@@ -4722,6 +4795,8 @@ void FunapiSessionImpl::OnSessionEvent(const TransportProtocol protocol,
     PushTaskQueue([this, protocol, type, session_id, error]()->bool {
       if (auto s = session_.lock()) {
         on_session_event_(s, protocol, type, session_id, error);
+        // send buffer 에 있는 메세지를 모두 전송 시도 한다.
+        send_flag_manager_->WakeUp();
       }
       return true;
     });
@@ -4874,7 +4949,10 @@ bool FunapiSessionImpl::SendClientPingMessage(const TransportProtocol protocol,
   FunEncoding encoding = GetEncoding(protocol);
   assert(encoding!=FunEncoding::kNone);
 
-  int64_t timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+  int64_t timestamp =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch()
+      ).count();
   // DebugUtils::Log("Send Tcp ping - timestamp: %lld", timestamp);
 
   std::shared_ptr<FunapiMessage> message;
@@ -5103,15 +5181,6 @@ void FunapiSessionImpl::UpdateAll() {
       s->UpdateTrasnports();
     }
   }
-
-  if (auto nt = FunapiThread::Get("_network")) {
-    if (nt->Size() == 0) {
-      nt->Push([]()->bool {
-        FunapiSocket::Select();
-        return true;
-      });
-    }
-  }
 }
 
 
@@ -5205,6 +5274,7 @@ void FunapiSessionImpl::SendUnsentQueueMessages()
                 PushTaskQueue([this, protocol, message]()->bool
                 {
                     send_queues_[static_cast<int>(protocol)]->PushBack(message->GetMessage());
+                    send_flag_manager_->WakeUp();
                     return true;
                 });
 
@@ -5222,6 +5292,25 @@ void FunapiSessionImpl::SendUnsentQueueMessages()
             queue->Clear();
         }
     }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// extern function. Used by funapi_socket.cpp, funapi_socket_win.cpp
+
+void OnSessionTicked()
+{
+  fun::vector<std::shared_ptr<FunapiSessionImpl>> impls =
+      FunapiSessionImpl::GetSessionImpls();
+  for (std::shared_ptr<FunapiSessionImpl> impl : impls)
+  {
+    std::shared_ptr<FunapiTransport> tcp_transport =
+        impl->GetTransport(TransportProtocol::kTcp);
+    if (tcp_transport != nullptr)
+    {
+      tcp_transport->Update();
+    }
+  }
 }
 
 
