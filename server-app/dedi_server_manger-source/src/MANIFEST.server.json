@@ -246,7 +246,15 @@
           "rpc_tags": [],
           "rpc_message_logging_level": 0,
           "rpc_disable_tcp_nagle": true,
-          "enable_rpc_reply_checker": true
+          "enable_rpc_reply_checker": true,
+          "rpc_backend": "redis",
+          "rpc_redis_hosts": [
+            {
+              "host": "127.0.0.1:6379",
+              "database": 0, // 생략하면 기본 값 0 으로 작동합니다.
+              "auth": "" // 생략하거나 빈 문자열을 입력하면 AUTH 를 진행하지 않습니다.
+            }
+          ]
         },
         "ZookeeperClient": {
           "zookeeper_nodes": "localhost:2181",
