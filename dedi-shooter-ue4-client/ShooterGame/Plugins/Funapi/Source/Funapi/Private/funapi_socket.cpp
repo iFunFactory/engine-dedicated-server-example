@@ -1,26 +1,34 @@
-// Copyright (C) 2013-2019 iFunFactory Inc. All Rights Reserved.
+// Copyright (C) 2013-2020 iFunFactory Inc. All Rights Reserved.
 //
 // This work is confidential and proprietary to iFunFactory Inc. and
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
 #ifndef FUNAPI_UE4_PLATFORM_PS4
-#ifndef FUNAPI_PLATFORM_WINDOWS
+
+#include "funapi_socket.h"
 
 #ifdef FUNAPI_UE4
 #include "FunapiPrivatePCH.h"
-#endif
+#endif // FUNAPI_UE4
 
 #include "funapi_send_flag_manager.h"
-#include "funapi_socket.h"
 #include "funapi_utils.h"
 
 #ifdef FUNAPI_UE4
+#ifdef FUNAPI_PLATFORM_WINDOWS
+#include "Windows/WindowsHWrapper.h"
+#else // FUNAPI_PLATFORM_WINDOWS
+#include <poll.h>
+#endif // FUNAPI_PLATFORM_WINDOWS
+
 // Work around a conflict between a UI namespace defined by engine code and a typedef in OpenSSL
 #define UI UI_ST
 THIRD_PARTY_INCLUDES_START
 #include "openssl/ssl.h"
 #include "openssl/err.h"
+#include "openssl/x509v3.h"
+THIRD_PARTY_INCLUDES_END
 #ifdef UI
 #undef UI
 #endif
@@ -98,24 +106,24 @@ class FunapiSocketImpl : public std::enable_shared_from_this<FunapiSocketImpl> {
   FunapiSocketImpl();
   virtual ~FunapiSocketImpl();
 
-  static fun::string GetStringFromAddrInfo(struct addrinfo *info);
-
-  static fun::vector<std::weak_ptr<FunapiSocketImpl>> vec_sockets_;
-  static std::mutex vec_sockets_mutex_;
-
   static void Add(std::shared_ptr<FunapiSocketImpl> s);
-  static fun::vector<std::shared_ptr<FunapiSocketImpl>> GetSocketImpls();
-  static bool Select();
-
-  static const int kBufferSize = 65536;
+  static bool Poll();
 
   int GetSocket();
-  virtual bool IsReadySelect();
-  virtual void OnSelect(const fd_set rset,
-                        const fd_set wset,
-                        const fd_set eset) = 0;
 
  protected:
+  static fun::string GetStringFromAddrInfo(struct addrinfo *info);
+
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  virtual void OnPoll(HANDLE handle) = 0;
+#else // FUNAPI_PLATFORM_WINDOWS
+  virtual void OnPoll(short poll_revents) = 0;
+#endif // FUNAPI_PLATFORM_WINDOWS
+
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  HANDLE GetEventHandle();
+#endif // FUNAPI_PLATFORM_WINDOWS
+
   bool InitAddrInfo(int socktype,
                     const char* hostname_or_ip,
                     const int port,
@@ -126,18 +134,38 @@ class FunapiSocketImpl : public std::enable_shared_from_this<FunapiSocketImpl> {
   bool InitSocket(struct addrinfo *info,
                   int &error_code,
                   fun::string &error_string);
+
+  bool InitNonblockingSocket(int &error_code, fun::string &error_string);
+
   void CloseSocket();
 
-  void SocketSelect(fd_set rset,
-                    fd_set wset,
-                    fd_set eset);
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  void SocketPoll(HANDLE handle);
+#else // FUNAPI_PLATFORM_WINDOWS
+  void SocketPoll(short poll_revents);
+#endif // FUNAPI_PLATFORM_WINDOWS
 
   virtual void OnSend() = 0;
   virtual void OnRecv() = 0;
 
+ private:
+  static fun::vector<std::shared_ptr<FunapiSocketImpl>> GetSocketImpls();
+
+  virtual bool IsReadyToPoll();
+
+ protected:
+  static const int kBufferSize = 65536;
+
   int socket_ = -1;
   struct addrinfo *addrinfo_ = nullptr;
   struct addrinfo *addrinfo_res_ = nullptr;
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  HANDLE event_handle_ = nullptr;
+#endif // FUNAPI_PLATFORM_WINDOWS
+
+ private:
+   static fun::vector<std::weak_ptr<FunapiSocketImpl>> vec_sockets_;
+   static std::mutex vec_sockets_mutex_;
 };
 
 
@@ -195,109 +223,177 @@ fun::vector<std::shared_ptr<FunapiSocketImpl>> FunapiSocketImpl::GetSocketImpls(
 
 // extern function in funapi_session.cpp
 void OnSessionTicked();
-bool FunapiSocketImpl::Select()
+bool FunapiSocketImpl::Poll()
 {
   static FunapiTimer session_tick_timer;
-
-  auto v_sockets = FunapiSocketImpl::GetSocketImpls();
-
-  if (!v_sockets.empty())
+  if (session_tick_timer.IsExpired())
   {
-    int max_fd = -1;
+    OnSessionTicked();
+    session_tick_timer.SetTimer(1);
+  }
 
-    fd_set rset;
-    fd_set wset;
-    fd_set eset;
+  fun::vector<std::shared_ptr<FunapiSocketImpl>> socket_impls =
+      GetSocketImpls();
 
-    FD_ZERO(&rset);
-    FD_ZERO(&wset);
-    FD_ZERO(&eset);
 
-    // Add send fd event
-    std::shared_ptr<FunapiSendFlagManager> send_flag_manager =
-      FunapiSendFlagManager::Get();
-    bool initialized_send_event = send_flag_manager->IsInitialized();
-    if (initialized_send_event)
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  int num_handles = 0;
+  fun::vector<HANDLE> handles(WSA_MAXIMUM_WAIT_EVENTS);
+
+  handles[0] = FunapiSendFlagManager::Get().GetEvent();
+  ++num_handles;
+
+  for (int i = 0; i < socket_impls.size(); ++i)
+  {
+    if (!socket_impls[i]->IsReadyToPoll())
     {
-      int* pipe_fds = send_flag_manager->GetPipFds();
-
-      // pipe_fds 는 int[2] 크기를 가진다.
-      for (int i = 0; i < 2; ++i)
-      {
-        int fd = pipe_fds[i];
-        if (fd > max_fd)
-          max_fd = fd;
-
-        FD_SET(fd, &rset);
-        FD_SET(fd, &eset);
-      }
+      continue;
     }
 
-    fun::vector<std::shared_ptr<FunapiSocketImpl>> v_select_sockets;
-    for (auto s : v_sockets)
+    auto event_handle = socket_impls[i]->GetEventHandle();
+    if (event_handle != WSA_INVALID_EVENT)
     {
-      if (s->IsReadySelect())
-      {
-        int fd = s->GetSocket();
-        if (fd > 0)
-        {
-          if (fd > max_fd) max_fd = fd;
-
-          FD_SET(fd, &rset);
-          FD_SET(fd, &eset);
-
-          v_select_sockets.push_back(s);
-        }
-      }
-    }
-
-    if (!v_select_sockets.empty())
-    {
-      struct timeval timeout { 0, 500 };
-      int result = select(max_fd + 1, &rset, NULL, &eset, &timeout);
-
-      // ERROR
-      if (result == -1)
-      {
-        DebugUtils::Log("Wait for events failed");
-        return false;
-      }
-
-      // PING
-      if (session_tick_timer.IsExpired())
-      {
-        // Update 는 1초 간격을 유지.
-        // Ping TimeOut 은 OnSessionTicked 함수 안에서 확인.
-        OnSessionTicked();
-        session_tick_timer.SetTimer(1);
-      }
-
-      // SEND
-      if (initialized_send_event)
-      {
-        int* pipe_fds = send_flag_manager->GetPipFds();
-        if (FD_ISSET(pipe_fds[0], &rset))
-        {
-          send_flag_manager->ResetWakeUp();
-
-          for (auto s : v_select_sockets)
-          {
-            s->OnSend();
-          }
-          return true;
-        }
-      }
-
-      // RECV
-      for (auto s : v_select_sockets) {
-        s->OnSelect(rset, wset, eset);
-      }
-
-      return true;
+      assert(num_handles + 1 < WSA_MAXIMUM_WAIT_EVENTS);
+      handles[num_handles] = event_handle;
+      ++num_handles;
     }
   }
 
-  return false;
+  DWORD ret =
+    WSAWaitForMultipleEvents(num_handles, &handles[0], /*any event*/false,
+                             /*msec*/1, /*no alertable*/false);
+
+  if (ret == WSA_WAIT_FAILED)
+  {
+    int error_code = FunapiUtil::GetSocketErrorCode();
+    DebugUtils::Log(
+        "WSA_WAIT_FAILED. error code : %d error message : %s",
+        error_code,
+        FunapiUtil::GetSocketErrorString(error_code).c_str());
+    return false;
+  }
+
+  if (ret == WSA_WAIT_TIMEOUT)
+  {
+    return true;
+  }
+
+  FunapiUtil::Assert(ret >= WSA_WAIT_EVENT_0 &&
+                     ret < WSA_WAIT_EVENT_0 + num_handles);
+
+  int index = ret - WSA_WAIT_EVENT_0;
+  if (index == 0)
+  {
+    FunapiSendFlagManager::Get().ResetWakeUp();
+    for (auto &s : socket_impls)
+    {
+      s->OnSend();
+    }
+  }
+
+  for (auto &s : socket_impls)
+  {
+    int smallest = index;
+    while (smallest < num_handles)
+    {
+      if (handles[smallest] == s->GetEventHandle())
+      {
+        break;
+      }
+      ++smallest;
+    }
+    if (smallest < num_handles)
+    {
+      assert(handles[smallest] == s->GetEventHandle());
+      s->OnPoll(handles[smallest]);
+    }
+  }
+
+#else // FUNAPI_PLATFORM_WINDOWS
+  static const int MAX_POLLFDS = 1024;
+  struct pollfd pollfds[MAX_POLLFDS];
+  int num_pollfds = 0;
+
+  int* pipe_fds = FunapiSendFlagManager::Get().GetPipeFds();
+  for (int i = 0; i < 2; ++i)
+  {
+    int fd = pipe_fds[i];
+    pollfds[num_pollfds].fd = fd;
+    pollfds[num_pollfds].events = POLLIN | POLLPRI;
+    pollfds[num_pollfds].revents = 0;
+    ++num_pollfds;
+  }
+
+  for (auto &s : socket_impls)
+  {
+    if (!s->IsReadyToPoll())
+    {
+      continue;
+    }
+
+    int fd = s->GetSocket();
+    if (fd > 0)
+    {
+      assert(num_pollfds + 1 < MAX_POLLFDS);
+      pollfds[num_pollfds].fd = fd;
+      pollfds[num_pollfds].events = POLLIN | POLLPRI;
+      pollfds[num_pollfds].revents = 0;
+      ++num_pollfds;
+    }
+  }
+
+  int ret = poll(pollfds, num_pollfds, 1);
+
+  if (ret < 0)
+  {
+    int error_cd = FunapiUtil::GetSocketErrorCode();
+    DebugUtils::Log(
+      "Socket poll failed, error code : %d, error message : %s",
+      error_cd,
+      FunapiUtil::GetSocketErrorString(error_cd).c_str());
+    return false;
+  }
+
+  // TIME OUT
+  if (ret == 0)
+  {
+    return true;
+  }
+
+  // SEND
+  if ((pollfds[0].revents & POLLIN))
+  {
+    FunapiSendFlagManager::Get().ResetWakeUp();
+    for (auto &s : socket_impls)
+    {
+      s->OnSend();
+    }
+    return true;
+  }
+
+  // RECV
+  for (auto &s : socket_impls)
+  {
+    int index = 0;
+    while (index < num_pollfds)
+    {
+      if (pollfds[index].fd == s->GetSocket())
+      {
+        break;
+      }
+      ++index;
+    }
+    if (index < num_pollfds)
+    {
+      assert(pollfds[index].fd == s->GetSocket());
+      if (pollfds[index].revents)
+      {
+        s->OnPoll(pollfds[index].revents);
+      }
+    }
+  }
+#endif // FUNAPI_PLATFORM_WINDOWS
+  return true;
 }
 
 
@@ -317,7 +413,7 @@ int FunapiSocketImpl::GetSocket() {
 }
 
 
-bool FunapiSocketImpl::IsReadySelect() {
+bool FunapiSocketImpl::IsReadyToPoll() {
   return true;
 }
 
@@ -422,18 +518,70 @@ bool FunapiSocketImpl::InitSocket(struct addrinfo *info,
 }
 
 
-void FunapiSocketImpl::SocketSelect(fd_set rset,
-                                    fd_set wset,
-                                    fd_set eset)
+bool FunapiSocketImpl::InitNonblockingSocket(int &error_code,
+                                             fun::string &error_string)
+{
+  do {
+#ifdef FUNAPI_PLATFORM_WINDOWS
+    u_long argp = 1;
+    if (ioctlsocket(socket_, FIONBIO, &argp) == 0) {
+      return true;
+    }
+#else // FUNAPI_PLATFORM_WINDOWS
+    int flag = fcntl(socket_, F_GETFL);
+    if (flag < 0)
+      break;
+
+    if (fcntl(socket_, F_SETFL, O_NONBLOCK | flag) == 0) {
+      return true;
+    }
+#endif // FUNAPI_PLATFORM_WINDOWS
+  } while (false);
+
+  error_code = FunapiUtil::GetSocketErrorCode();
+  error_string = FunapiUtil::GetSocketErrorString(error_code);
+  return false;
+}
+
+
+#ifdef FUNAPI_PLATFORM_WINDOWS
+void FunapiSocketImpl::SocketPoll(HANDLE handle)
 {
   if (socket_ > 0)
   {
-    if (FD_ISSET(socket_, &rset))
+    WSANETWORKEVENTS networkEvents;
+    networkEvents.lNetworkEvents = 0;
+    if (WSAEnumNetworkEvents(socket_, handle, &networkEvents) == 0)
+    {
+      if (networkEvents.lNetworkEvents & FD_READ ||
+          networkEvents.lNetworkEvents & FD_CLOSE)
+      {
+        OnRecv();
+      }
+    }
+  }
+}
+#else // FUNAPI_PLATFORM_WINDOWS
+void FunapiSocketImpl::SocketPoll(short poll_revents)
+{
+  if (socket_ > 0)
+  {
+    if ((poll_revents & POLLIN) ||
+        (poll_revents & POLLHUP) ||
+        (poll_revents & POLLERR))
     {
       OnRecv();
     }
   }
 }
+#endif // FUNAPI_PLATFORM_WINDOWS
+
+
+#ifdef FUNAPI_PLATFORM_WINDOWS
+HANDLE FunapiSocketImpl::GetEventHandle() {
+  return event_handle_;
+}
+#endif // FUNAPI_PLATFORM_WINDOWS
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -448,9 +596,11 @@ class FunapiTcpImpl : public FunapiSocketImpl {
 
   FunapiTcpImpl();
   virtual ~FunapiTcpImpl();
-
-  void OnSelect(const fd_set rset, const fd_set wset, const fd_set eset);
-
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  void OnPoll(HANDLE handle);
+#else // FUNAPI_PLATFORM_WINDOWS
+  void OnPoll(short poll_revents);
+#endif // FUNAPI_PLATFORM_WINDOWS
   void Connect(const char* hostname_or_ip,
                const int port,
                const time_t connect_timeout_seconds,
@@ -476,16 +626,14 @@ class FunapiTcpImpl : public FunapiSocketImpl {
 
   bool Send(const fun::vector<uint8_t> &body, const SendCompletionHandler &send_handler);
 
-  bool IsReadySelect();
+  bool IsReadyPoll();
 
  protected:
   bool InitTcpSocketOption(bool disable_nagle,
                            int &error_code,
                            fun::string &error_string);
 
-  void SocketSelect(fd_set rset,
-                    fd_set wset,
-                    fd_set eset);
+  void SocketPoll(short poll_revents);
 
   void OnConnectCompletion(const bool is_failed,
                            const bool is_timed_out,
@@ -501,15 +649,11 @@ class FunapiTcpImpl : public FunapiSocketImpl {
   void OnSend();
   void OnRecv();
 
-  enum class SocketSelectState : int {
+  enum class SocketPollState : int {
     kNone = 0,
-    kSelect,
+    kPoll,
   };
-  SocketSelectState socket_select_state_ = SocketSelectState::kNone;
-
-  fun::vector<std::function<void(const fd_set rset,
-                                 const fd_set wset,
-                                 const fd_set eset)>> on_socket_select_;
+  SocketPollState socket_poll_state_ = SocketPollState::kNone;
 
   ConnectCompletionHandler completion_handler_ = nullptr;
 
@@ -525,6 +669,7 @@ class FunapiTcpImpl : public FunapiSocketImpl {
   // https://curl.haxx.se/ca/cacert.pem
   fun::string cert_file_path_;
   bool use_tls_ = false;
+  fun::string hostname_or_ip_;
 
   SSL_CTX *ctx_ = nullptr;
   SSL *ssl_ = nullptr;
@@ -556,18 +701,22 @@ void FunapiTcpImpl::CleanupSSL() {
   }
 }
 
-
-void FunapiTcpImpl::OnSelect(const fd_set rset,
-                             const fd_set wset,
-                             const fd_set eset) {
-  if (socket_select_state_ == SocketSelectState::kSelect) {
-    FunapiSocketImpl::SocketSelect(rset, wset, eset);
+#ifdef FUNAPI_PLATFORM_WINDOWS
+void FunapiTcpImpl::OnPoll(HANDLE handle) {
+  if (socket_poll_state_ == SocketPollState::kPoll) {
+    FunapiSocketImpl::SocketPoll(handle);
   }
 }
+#else // FUNAPI_PLATFORM_WINDOWS
+void FunapiTcpImpl::OnPoll(short poll_revents) {
+  if (socket_poll_state_ == SocketPollState::kPoll) {
+    FunapiSocketImpl::SocketPoll(poll_revents);
+  }
+}
+#endif // FUNAPI_PLATFORM_WINDOWS
 
-
-bool FunapiTcpImpl::IsReadySelect() {
-  if (socket_select_state_ == SocketSelectState::kSelect) {
+bool FunapiTcpImpl::IsReadyPoll() {
+  if (socket_poll_state_ == SocketPollState::kPoll) {
     return true;
   }
 
@@ -577,83 +726,148 @@ bool FunapiTcpImpl::IsReadySelect() {
 
 void FunapiTcpImpl::Connect(struct addrinfo *addrinfo_res) {
   addrinfo_res_ = addrinfo_res;
+  socket_poll_state_ = SocketPollState::kNone;
 
-  socket_select_state_ = SocketSelectState::kNone;
+  int rc = connect(socket_, addrinfo_res_->ai_addr, addrinfo_res_->ai_addrlen);
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  if (rc != 0 && WSAGetLastError() != WSAEWOULDBLOCK) {
+    OnConnectCompletion(/*failed*/true, /*timeout*/true);
+    return;
+  }
 
-  int rc = connect(socket_,addrinfo_res_->ai_addr, addrinfo_res_->ai_addrlen);
+#else // FUNAPI_PLATFORM_WINDOWS
   if (rc != 0 && errno != EINPROGRESS) {
-    OnConnectCompletion(true, false);
+    OnConnectCompletion(/*failed*/true, /*timeout*/false);
     return;
   }
-#ifndef FUNAPI_PLATFORM_WINDOWS
-  if (rc == 0) {
-    OnConnectCompletion(true, true);
+#endif // FUNAPI_PLATFORM_WINDOWS
+
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  event_handle_ = WSACreateEvent();
+  if (WSAEventSelect(socket_, event_handle_,
+                     FD_READ | FD_CONNECT | FD_CLOSE) != 0)
+  {
+    int error_code = FunapiUtil::GetSocketErrorCode();
+    OnConnectCompletion(
+        /*failed*/true, /*timeout*/true,
+        error_code, FunapiUtil::GetSocketErrorString(error_code));
     return;
   }
-#endif
 
-  fd_set rset;
-  fd_set wset;
-  fd_set eset;
+  DWORD ret = WSAWaitForMultipleEvents(
+      /*count*/1, &event_handle_, /*any event*/false,
+      connect_timeout_seconds_ * 1000, /*no alertable*/false);
 
-  FD_ZERO(&rset);
-  FD_ZERO(&wset);
-  FD_ZERO(&eset);
+  if (ret == WSA_WAIT_FAILED)
+  {
+    OnConnectCompletion(/*failed*/true, /*timeout*/false);
+    return;
+  }
+  else if (ret == WSA_WAIT_TIMEOUT)
+  {
+    OnConnectCompletion(
+        /*failed*/true, /*timeout*/true, /*error code*/0,
+        "Failed to connect due to the connection timeout");
+    return;
+  }
 
-  FD_SET(socket_, &rset);
-  FD_SET(socket_, &wset);
-  FD_SET(socket_, &eset);
+  int error_code = 0;
+  socklen_t error_code_len = sizeof(error_code);
+
+  int index = ret - WSA_WAIT_EVENT_0;
+  FunapiUtil::Assert(index == 0);
+
+  WSANETWORKEVENTS networkEvents;
+  networkEvents.lNetworkEvents = 0;
+  if (WSAEnumNetworkEvents(socket_, event_handle_, &networkEvents) == 0)
+  {
+    if (!(networkEvents.lNetworkEvents & FD_CONNECT ||
+        networkEvents.lNetworkEvents & FD_READ))
+    {
+      OnConnectCompletion(
+          /*failed*/true, /*timeout*/false, /*error code*/0,
+          "Failed to connect to server. Please check if server");
+    }
+  }
+
+  if (getsockopt(socket_, SOL_SOCKET, SO_ERROR,
+                (char*)&error_code, &error_code_len) < 0) {
+    OnConnectCompletion(
+        /*failed*/true, /*timeout*/false,
+        error_code, FunapiUtil::GetSocketErrorString(error_code));
+    return;
+  }
+
+  if (error_code == 0) {
+    OnConnectCompletion(/*failed*/false, /*timeout*/false);
+    return;
+  }
+
+  if (error_code == WSAETIMEDOUT) {
+    OnConnectCompletion(
+        /*failed*/true, /*timeout*/true,
+        error_code, FunapiUtil::GetSocketErrorString(error_code));
+    return;
+  }
+
+  OnConnectCompletion(
+      /*failed*/true, /*timeout*/false,
+      error_code, FunapiUtil::GetSocketErrorString(error_code));
+#else // FUNAPI_PLATFORM_WINDOWS
+  struct pollfd pollfds[1];
+  pollfds[0].fd = socket_;
+  pollfds[0].events = POLLIN | POLLPRI | POLLOUT;
+  pollfds[0].revents = 0;
 
   struct timeval timeout = { static_cast<long>(connect_timeout_seconds_), 0 };
-  rc = select(socket_+1, &rset, &wset, &eset, &timeout);
+  rc = poll(pollfds, sizeof(pollfds) / sizeof(pollfds[0]), connect_timeout_seconds_ * 1000);
   if (rc < 0) {
-    // select failed
-    OnConnectCompletion(true, false);
+    // poll failed
+    OnConnectCompletion(/*failed*/true, /*timeout*/false);
+    return;
   }
-  else if (rc == 0) {
+
+  if (rc == 0) {
     // connect timed out
-    OnConnectCompletion(true, true);
+    OnConnectCompletion(
+        /*failed*/true, /*timeout*/true, /*error code*/0,
+        "Failed to connect due to the connection timeout");
+    return;
   }
-  else {
-#ifdef FUNAPI_PLATFORM_WINDOWS
-    if (!FD_ISSET(socket_, &rset) && !FD_ISSET(socket_, &wset)) {
-      OnConnectCompletion(true, false, 0, "");
-      return;
-    }
 
-    if (FD_ISSET(socket_, &eset)) {
-      OnConnectCompletion(true, false, 0, "");
-      return;
-    }
+  int error_code = 0;
+  socklen_t error_code_len = sizeof(error_code);
 
-    OnConnectCompletion(false, false, 0, "");
-#else
-    int e = 0;
-    socklen_t e_size = sizeof(e);
+  short revents = pollfds[0].revents;
 
-    if (!FD_ISSET(socket_, &rset) && !FD_ISSET(socket_, &wset)) {
-      OnConnectCompletion(true, false, 0, "");
-      return;
-    }
+  if (!(revents & POLLIN) && !(revents & POLLOUT)) {
+    OnConnectCompletion(
+        /*failed*/true, /*timeout*/false, /*error code*/0,
+        "Failed to connect to server. Please check if server");
+    return;
+  }
 
-    if (getsockopt(socket_, SOL_SOCKET, SO_ERROR, &e, &e_size) < 0) {
-      OnConnectCompletion(true, false, e, strerror(e));
-      return;
-    }
+  if (getsockopt(socket_, SOL_SOCKET, SO_ERROR,
+                 &error_code, &error_code_len) < 0) {
+    OnConnectCompletion(/*failed*/true, /*timeout*/false,
+                        error_code, strerror(error_code));
+    return;
+  }
 
-    if (e == 0) {
-      OnConnectCompletion(false, false, 0, "");
-      return;
-    }
+  if (error_code == 0) {
+    OnConnectCompletion(/*failed*/false, /*timeout*/false);
+    return;
+  }
 
-    if (e == 60) {
-      OnConnectCompletion(true, true, e, strerror(e));
-      return;
-    }
+  if (error_code == ETIMEDOUT) {
+    OnConnectCompletion(/*failed*/true, /*timeout*/true,
+                        error_code, strerror(error_code));
+    return;
+  }
 
-    OnConnectCompletion(true, false, e, strerror(e));
+  OnConnectCompletion(/*failed*/true, /*timeout*/false,
+                      error_code, strerror(error_code));
 #endif // FUNAPI_PLATFORM_WINDOWS
-  }
 }
 
 
@@ -701,6 +915,7 @@ void FunapiTcpImpl::Connect(const char* hostname_or_ip,
 
   use_tls_ = use_tls;
   cert_file_path_ = cert_file_path;
+  hostname_or_ip_ = hostname_or_ip;
 
   send_handler_ = send_handler;
   recv_handler_ = recv_handler;
@@ -709,7 +924,7 @@ void FunapiTcpImpl::Connect(const char* hostname_or_ip,
   int error_code = 0;
   fun::string error_string;
 
-  if (!InitAddrInfo(SOCK_STREAM, hostname_or_ip, port, error_code, error_string)) {
+  if (!InitAddrInfo(SOCK_STREAM, hostname_or_ip_.c_str(), port, error_code, error_string)) {
     OnConnectCompletion(true, false, error_code, error_string);
     return;
   }
@@ -717,6 +932,11 @@ void FunapiTcpImpl::Connect(const char* hostname_or_ip,
   addrinfo_res_ = addrinfo_;
 
   if (!InitSocket(addrinfo_res_, error_code, error_string)) {
+    OnConnectCompletion(true, false, error_code, error_string);
+    return;
+  }
+
+  if (!InitNonblockingSocket(error_code, error_string)) {
     OnConnectCompletion(true, false, error_code, error_string);
     return;
   }
@@ -738,18 +958,6 @@ void FunapiTcpImpl::Connect(const char* hostname_or_ip,
 
 
 bool FunapiTcpImpl::InitTcpSocketOption(bool disable_nagle, int &error_code, fun::string &error_string) {
-  // non-blocking.
-#ifdef FUNAPI_PLATFORM_WINDOWS
-  u_long argp = 0;
-  int flag = ioctlsocket(socket_, FIONBIO, &argp);
-  assert(flag >= 0);
-#else
-  int flag = fcntl(socket_, F_GETFL);
-  assert(flag >= 0);
-  int rc = fcntl(socket_, F_SETFL, O_NONBLOCK | flag);
-  assert(rc >= 0);
-#endif
-
   // Disable nagle
   if (disable_nagle) {
     int nagle_flag = 1;
@@ -801,20 +1009,33 @@ bool FunapiTcpImpl::ConnectTLS() {
     return false;
   }
 
-  bool use_verify = false;
-
-  if (!cert_file_path_.empty()) {
-    if (!SSL_CTX_load_verify_locations(ctx_, cert_file_path_.c_str(), NULL)) {
+#if FUNAPI_TLS_VERIFY_SERVER_CERTIFICATE
+  if (cert_file_path_.empty())
+  {
+    fun::stringstream ss;
+    ss << "A server certificate will not be verified. ";
+    ss << "To verify the server certificate, ";
+    ss << "set root certificate path ";
+    ss << "use FunapiTcpTransportOption.SetCACertFilePath().";
+    DebugUtils::Log("%s", ss.str().c_str());
+  }
+  else
+  {
+    if (!SSL_CTX_load_verify_locations(ctx_, cert_file_path_.c_str(), NULL))
+    {
       on_ssl_error_completion();
       return false;
     }
-    else {
-      SSL_CTX_set_verify(ctx_, SSL_VERIFY_PEER, NULL);
-      SSL_CTX_set_verify_depth(ctx_, 1);
 
-      use_verify = true;
-    }
+    SSL_CTX_set_verify(ctx_, SSL_VERIFY_PEER, NULL);
+    SSL_CTX_set_verify_depth(ctx_, 2);
   }
+#else // FUNAPI_TLS_VERIFY_SERVER_CERTIFICATE
+  fun::stringstream ss;
+  ss << "A server certificate will not be verified because ";
+  ss << "FUNAPI_TLS_VERIFY_SERVER_CERTIFICATE is set to 0.";
+  DebugUtils::Log(ss.str().c_str());
+#endif // FUNAPI_TLS_VERIFY_SERVER_CERTIFICATE
 
   ssl_ = SSL_new(ctx_);
 
@@ -828,6 +1049,17 @@ bool FunapiTcpImpl::ConnectTLS() {
     on_ssl_error_completion();
     return false;
   }
+
+#if FUNAPI_TLS_VERIFY_SERVER_CERTIFICATE
+  auto param = SSL_get0_param(ssl_);
+  X509_VERIFY_PARAM_set_hostflags(param, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+  if (!X509_VERIFY_PARAM_set1_host(param, hostname_or_ip_.c_str(),
+                                   strlen(hostname_or_ip_.c_str())))
+  {
+    on_ssl_error_completion();
+    return false;
+  }
+#endif // FUNAPI_TLS_VERIFY_SERVER_CERTIFICATE
 
   while (true)
   {
@@ -845,20 +1077,6 @@ bool FunapiTcpImpl::ConnectTLS() {
     }
     else {
       break;
-    }
-  }
-
-  if (use_verify) {
-    if (SSL_get_peer_certificate(ssl_) != NULL)
-    {
-      if (SSL_get_verify_result(ssl_) != X509_V_OK) {
-        on_ssl_error_completion();
-        return false;
-      }
-    }
-    else {
-      on_ssl_error_completion();
-      return false;
     }
   }
 
@@ -887,10 +1105,10 @@ void FunapiTcpImpl::OnConnectCompletion(const bool is_failed,
 
   if (completion_handler_) {
     if (!is_failed) {
-      socket_select_state_ = SocketSelectState::kSelect;
+      socket_poll_state_ = SocketPollState::kPoll;
     }
     else {
-      socket_select_state_ = SocketSelectState::kNone;
+      socket_poll_state_ = SocketPollState::kNone;
     }
 
     auto addrinfo = FunapiAddrInfo::Create();
@@ -921,22 +1139,24 @@ void FunapiTcpImpl::OnSend() {
         0));
     }
 
-    /*
-    if (nSent == 0) {
-      DebugUtils::Log("Socket [%d] closed.", socket_);
-    }
-    */
-
-    if (nSent <= 0) {
+    if (nSent < 0) {
       int error_code = FunapiUtil::GetSocketErrorCode();
+#ifdef FUNAPI_PLATFORM_WINDOWS
+      if (error_code == WSAEWOULDBLOCK) {
+        return;
+      }
+#else // FUNAPI_PLATFORM_WINDOWS
+      if (error_code == EWOULDBLOCK) {
+        return;
+      }
+#endif // FUNAPI_PLATFORM_WINDOWS
       fun::string error_string = FunapiUtil::GetSocketErrorString(error_code);
       send_completion_handler_(true, error_code, error_string, nSent);
       CloseSocket();
-    }
-    else {
-      offset_ += nSent;
+      return;
     }
 
+    offset_ += nSent;
     if (offset_ == body_.size()) {
       offset_ = 0;
       body_.resize(0);
@@ -959,21 +1179,30 @@ void FunapiTcpImpl::OnRecv() {
     nRead = static_cast<int>(recv(socket_, reinterpret_cast<char*>(buffer.data()), kBufferSize, 0));
   }
 
-  /*
   if (nRead == 0) {
-    DebugUtils::Log("Socket [%d] closed.", socket_);
+    recv_handler_(true, 0, "Peer closed the TCP transport", nRead, buffer);
+    CloseSocket();
+    return;
   }
-  */
 
-  if (nRead <= 0) {
+  if (nRead < 0) {
     int error_code = FunapiUtil::GetSocketErrorCode();
+#ifdef FUNAPI_PLATFORM_WINDOWS
+    if (error_code == WSAEWOULDBLOCK) {
+      return;
+    }
+#else // FUNAPI_PLATFORM_WINDOWS
+    if (error_code == EWOULDBLOCK) {
+      return;
+    }
+#endif // FUNAPI_PLATFORM_WINDOWS
     fun::string error_string = FunapiUtil::GetSocketErrorString(error_code);
     recv_handler_(true, error_code, error_string, nRead, buffer);
     CloseSocket();
+    return;
   }
-  else {
-    recv_handler_(false, 0, "", nRead, buffer);
-  }
+
+  recv_handler_(false, 0, "", nRead, buffer);
 }
 
 
@@ -1010,8 +1239,11 @@ class FunapiUdpImpl : public FunapiSocketImpl {
                 const SendHandler &send_handler,
                 const RecvHandler &recv_handler);
   virtual ~FunapiUdpImpl();
-
-  void OnSelect(const fd_set rset, const fd_set wset, const fd_set eset);
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  void OnPoll(HANDLE handle);
+#else // FUNAPI_PLATFORM_WINDOWS
+  void OnPoll(short poll_revents);
+#endif //FUNAPI_PLATFORM_WINDOWS
   bool Send(const fun::vector<uint8_t> &body, const SendCompletionHandler &send_handler);
 
  private:
@@ -1045,6 +1277,21 @@ FunapiUdpImpl::FunapiUdpImpl(const char* hostname_or_ip,
     return;
   }
 
+  if (!InitNonblockingSocket(error_code, error_string)) {
+    init_handler(true, error_code, error_string);
+    return;
+  }
+
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  event_handle_ = WSACreateEvent();
+  if (WSAEventSelect(socket_, event_handle_, FD_READ) != 0)
+  {
+    int error_code = FunapiUtil::GetSocketErrorCode();
+    init_handler(true, error_code, FunapiUtil::GetSocketErrorString(error_code));
+    return;
+  }
+#endif // FUNAPI_PLATFORM_WINDOWS
+
   init_handler(false, 0, "");
 }
 
@@ -1053,9 +1300,15 @@ FunapiUdpImpl::~FunapiUdpImpl() {
 }
 
 
-void FunapiUdpImpl::OnSelect(const fd_set rset, const fd_set wset, const fd_set eset) {
-  FunapiSocketImpl::SocketSelect(rset, wset, eset);
+#ifndef FUNAPI_PLATFORM_WINDOWS
+void FunapiUdpImpl::OnPoll(short poll_revents) {
+  FunapiSocketImpl::SocketPoll(poll_revents);
 }
+#else // FUNAPI_PLATFORM_WINDOWS
+void FunapiUdpImpl::OnPoll(HANDLE handle) {
+  FunapiSocketImpl::SocketPoll(handle);
+}
+#endif
 
 
 void FunapiUdpImpl::OnSend() {
@@ -1078,21 +1331,21 @@ void FunapiUdpImpl::OnRecv() {
                                         (&addrinfo_res_->ai_addrlen)));
 #endif // FUNAPI_PLATFORM_WINDOWS
 
-  /*
   if (nRead == 0) {
-    DebugUtils::Log("Socket [%d] closed.", socket_);
+    recv_handler_(true, 0, "Peer closed the TCP transport", nRead, receiving_vector);
+    CloseSocket();
+    return;
   }
-  */
 
-  if (nRead <= 0) {
+  if (nRead < 0) {
     int error_code = FunapiUtil::GetSocketErrorCode();
     fun::string error_string = FunapiUtil::GetSocketErrorString(error_code);
     recv_handler_(true, error_code, error_string, nRead, receiving_vector);
     CloseSocket();
+    return;
   }
-  else {
-    recv_handler_(false, 0, "", nRead, receiving_vector);
-  }
+
+  recv_handler_(false, 0, "", nRead, receiving_vector);
 }
 
 
@@ -1101,13 +1354,7 @@ bool FunapiUdpImpl::Send(const fun::vector<uint8_t> &body, const SendCompletionH
 
   int nSent = static_cast<int>(sendto(socket_, reinterpret_cast<char*>(buf), body.size(), 0, addrinfo_res_->ai_addr, addrinfo_res_->ai_addrlen));
 
-  /*
-  if (nSent == 0) {
-    DebugUtils::Log("Socket [%d] closed.", socket_);
-  }
-  */
-
-  if (nSent <= 0) {
+  if (nSent < 0) {
     int error_code = FunapiUtil::GetSocketErrorCode();
     fun::string error_string = FunapiUtil::GetSocketErrorString(error_code);
     send_completion_handler(true, error_code, error_string, nSent);
@@ -1124,8 +1371,8 @@ bool FunapiUdpImpl::Send(const fun::vector<uint8_t> &body, const SendCompletionH
 ////////////////////////////////////////////////////////////////////////////////
 // FunapiSocket implementation.
 
-bool FunapiSocket::Select() {
-  return FunapiSocketImpl::Select();
+bool FunapiSocket::Poll() {
+  return FunapiSocketImpl::Poll();
 }
 
 
@@ -1232,10 +1479,15 @@ int FunapiTcp::GetSocket() {
   return impl_->GetSocket();
 }
 
-
-void FunapiTcp::OnSelect(const fd_set rset, const fd_set wset, const fd_set eset) {
-  impl_->OnSelect(rset, wset, eset);
+#ifdef FUNAPI_PLATFORM_WINDOWS
+void FunapiTcp::OnPoll(HANDLE handle) {
+  impl_->OnPoll(handle);
 }
+#else // FUNAPI_PLATFORM_WINDOWS
+void FunapiTcp::OnPoll(short poll_revents) {
+  impl_->OnPoll(poll_revents);
+}
+#endif // FUNAPI_PLATFORM_WINDOWS
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1282,11 +1534,16 @@ int FunapiUdp::GetSocket() {
 }
 
 
-void FunapiUdp::OnSelect(const fd_set rset, const fd_set wset, const fd_set eset) {
-  impl_->OnSelect(rset, wset, eset);
+#ifdef FUNAPI_PLATFORM_WINDOWS
+void FunapiUdp::OnPoll(HANDLE handle) {
+  impl_->OnPoll(handle);
 }
+#else // FUNAPI_PLATFORM_WINDOWS
+void FunapiUdp::OnPoll(short poll_revents) {
+  impl_->OnPoll(poll_revents);
+}
+#endif // FUNAPI_PLATFORM_WINDOWS
 
 }  // namespace fun
 
-#endif // FUNAPI_PLATFORM_WINDOWS
 #endif // FUNAPI_UE4_PLATFORM_PS4

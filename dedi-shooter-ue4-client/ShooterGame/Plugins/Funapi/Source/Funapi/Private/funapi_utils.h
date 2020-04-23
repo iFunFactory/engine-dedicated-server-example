@@ -89,6 +89,9 @@ class FunapiUtil
 
   static int GetSocketErrorCode();
   static fun::string GetSocketErrorString(const int code);
+
+  static void Assert(bool condition, fun::string error_msg = "");
+  static fun::string EncodeUrl(const fun::string& url);
 };
 
 

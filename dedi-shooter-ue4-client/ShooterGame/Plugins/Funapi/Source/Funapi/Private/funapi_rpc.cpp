@@ -4,11 +4,11 @@
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
+#include "funapi_rpc.h"
+
 #ifdef FUNAPI_UE4
 #include "FunapiPrivatePCH.h"
 #endif
-
-#include "funapi_rpc.h"
 
 #if FUNAPI_HAVE_RPC
 
@@ -977,7 +977,7 @@ void FunapiRpcImpl::Update() {
   if (auto nt = FunapiThread::Get("_network")) {
     if (nt->Size() == 0) {
       nt->Push([]()->bool {
-        FunapiSocket::Select();
+        FunapiSocket::Poll();
         return true;
       });
     }

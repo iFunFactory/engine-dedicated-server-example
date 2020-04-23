@@ -13,7 +13,7 @@
 #endif
 
 #ifdef FUNAPI_UE4_PLATFORM_WINDOWS
-#include "AllowWindowsPlatformTypes.h"
+#include "Windows/AllowWindowsPlatformTypes.h"
 #endif
 
 #ifdef FUNAPI_PLATFORM_WINDOWS
@@ -58,10 +58,13 @@
 #include "funapi_std_allocator.h"
 
 #ifdef FUNAPI_COCOS2D
+#ifndef FUNAPI_PLATFORM_WINDOWS
+#include <sys/stat.h>
+#endif
 #include "json/stringbuffer.h"
 #include "json/writer.h"
 #include "json/document.h"
-#endif
+#endif // FUNAPI_COCOS2D
 
 #ifdef FUNAPI_UE4
 #include "rapidjson/stringbuffer.h"
@@ -70,7 +73,7 @@
 #endif
 
 #ifdef FUNAPI_UE4_PLATFORM_WINDOWS
-#include "HideWindowsPlatformTypes.h"
+#include "Windows/HideWindowsPlatformTypes.h"
 #endif
 
 #endif  // SRC_FUNAPI_PLUGIN_H_

@@ -4,11 +4,12 @@
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
+#include "funapi_downloader.h"
+
 #ifdef FUNAPI_UE4
 #include "FunapiPrivatePCH.h"
 #endif
 
-#include "funapi_downloader.h"
 #include "funapi_utils.h"
 #include "funapi_tasks.h"
 #include "funapi_http.h"
@@ -297,7 +298,7 @@ bool FunapiHttpDownloaderImpl::CheckDirectory(const fun::string& file_path)
     {
       ss << dirname << "/";
       const fun::string& path = ss.str();
-      if (!FunapiUtil::IsDirectoryExists(dir_path))
+      if (!FunapiUtil::IsDirectoryExists(path))
       {
         if (!FunapiUtil::CreateDirectory(path))
         {

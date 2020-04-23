@@ -4,18 +4,22 @@
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
+#include "funapi_utils.h"
+
 #ifdef FUNAPI_UE4
 #include "FunapiPrivatePCH.h"
 #endif
 
-#include "funapi_utils.h"
+#include <iomanip>
 
 #ifdef FUNAPI_COCOS2D
+#include <assert.h>
 #include "md5/md5.h"
 #endif
 
 #ifdef FUNAPI_UE4
-#include "SecureHash.h"
+#include "Misc/AssertionMacros.h"
+#include "Misc/SecureHash.h"
 #include "Misc/Base64.h"
 #endif
 
@@ -134,35 +138,29 @@ bool FunapiUtil::DecodeBase64(const fun::string &in, fun::vector<uint8_t> &out) 
 
 
 int FunapiUtil::GetSocketErrorCode() {
-#ifdef FUNAPI_UE4_PLATFORM_WINDOWS
+#ifdef FUNAPI_PLATFORM_WINDOWS
   return ::WSAGetLastError();
 #else
   return errno;
 #endif
-
-  return 0;
 }
 
 
 fun::string FunapiUtil::GetSocketErrorString(const int code) {
-#ifdef FUNAPI_UE4_PLATFORM_WINDOWS
-  {
-    LPSTR temp_error_string = NULL;
+#ifdef FUNAPI_PLATFORM_WINDOWS
+  LPSTR temp_error_string = NULL;
 
-    int size = ::FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
-      0, code, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), (LPSTR)&temp_error_string, 0, 0);
+  int size = ::FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
+    0, code, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), (LPSTR)&temp_error_string, 0, 0);
 
-    fun::string ret = temp_error_string;
+  fun::string ret = temp_error_string;
 
-    LocalFree(temp_error_string);
+  LocalFree(temp_error_string);
 
-    return ret;
-  }
+  return ret;
 #else
   return strerror(code);
 #endif
-
-  return "";
 }
 
 
@@ -228,68 +226,106 @@ bool FunapiUtil::SeqLess(const uint32_t x, const uint32_t y) {
 }
 
 
-#ifdef FUNAPI_COCOS2D
+fun::string FunapiUtil::EncodeUrl(const fun::string& url)
+{
+  // https://github.com/whoshuu/cpr/blob/master/cpr/util.cpp
+  // https://en.cppreference.com/w/cpp/string/byte/isalnum
+  stringstream escaped;
+  escaped.fill('0');
+  escaped << std::hex;
+
+  for (string::const_iterator i = url.begin(), n = url.end(); i != n; ++i) {
+    string::value_type c = (*i);
+
+    // Keep alphanumeric and other accepted characters intact
+    if (isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.' || c == '~') {
+      escaped << c;
+      continue;
+    }
+
+    // Any other characters are percent-encoded
+    escaped << std::uppercase;
+    escaped << '%' << std::setw(2) << int((unsigned char)c);
+    escaped << std::nouppercase;
+  }
+
+  return escaped.str();
+}
+
+
 bool FunapiUtil::IsFileExists(const fun::string &file_name)
 {
+#ifdef FUNAPI_COCOS2D
   return cocos2d::FileUtils::getInstance()->isFileExist(file_name.c_str());
-}
-#endif
-
-
-#ifdef FUNAPI_UE4
-bool FunapiUtil::IsFileExists(const fun::string &file_name)
-{
+#elif FUNAPI_UE4
   return FPlatformFileManager::Get().GetPlatformFile().FileExists(ANSI_TO_TCHAR(file_name.c_str()));
-};
+#else
+  // If you are supporting a new game engine, please fill out the function
+  // using the function provided by the game engine you want to add.
+#  error FunapiUtil::IsFileExists function supports only Cocos2d, UE4 game engines.
+  return false;
 #endif
 
+}
 
-#ifdef FUNAPI_COCOS2D
+
 long FunapiUtil::GetFileSize(const fun::string &file_name)
 {
+#ifdef FUNAPI_COCOS2D
   return cocos2d::FileUtils::getInstance()->getFileSize(file_name.c_str());
-};
-#endif
-
-
-#ifdef FUNAPI_UE4
-long FunapiUtil::GetFileSize(const fun::string &file_name)
-{
+#elif FUNAPI_UE4
   return FPlatformFileManager::Get().GetPlatformFile().FileSize(ANSI_TO_TCHAR(file_name.c_str()));
-}
+#else
+  // If you are supporting a new game engine, please fill out the function
+  // using the function provided by the game engine you want to add.
+#  error FunapiUtil::GetFileSize function supports only Cocos2d, UE4 game engines.
+  return false;
 #endif
+};
 
 
-#ifdef FUNAPI_COCOS2D
+
 bool FunapiUtil::IsDirectoryExists(const fun::string &dir_name)
 {
+#ifdef FUNAPI_COCOS2D
   return cocos2d::FileUtils::getInstance()->isDirectoryExist(dir_name);
-}
-#endif
-
-
-#ifdef FUNAPI_UE4
-bool FunapiUtil::IsDirectoryExists(const fun::string &dir_name)
-{
+#elif FUNAPI_UE4
   return FPlatformFileManager::Get().GetPlatformFile().DirectoryExists(ANSI_TO_TCHAR(dir_name.c_str()));
-}
+#else
+  // If you are supporting a new game engine, please fill out the function
+  // using the function provided by the game engine you want to add.
+#  error FunapiUtil::IsDirectoryExists function supports only Cocos2d, UE4 game engines.
+  return false;
 #endif
+}
 
 
+
+bool FunapiUtil::CreateDirectory(const fun::string &dir_name)
+{
 #ifdef FUNAPI_COCOS2D
-bool FunapiUtil::CreateDirectory(const fun::string &dir_name)
-{
   return cocos2d::FileUtils::getInstance()->createDirectory(dir_name);
-}
-#endif
-
-
-#ifdef FUNAPI_UE4
-bool FunapiUtil::CreateDirectory(const fun::string &dir_name)
-{
+#elif FUNAPI_UE4
   return FPlatformFileManager::Get().GetPlatformFile().CreateDirectory(UTF8_TO_TCHAR(dir_name.c_str()));
-}
+#else
+  // If you are supporting a new game engine, please fill out the function
+  // using the function provided by the game engine you want to add.
+#  error FunapiUtil::CreateDirectory function supports only Cocos2d, UE4 game engines.
+  return false;
 #endif
+}
+
+
+void FunapiUtil::Assert(bool condition, fun::string error_msg)
+{
+#ifdef FUNAPI_UE4
+  // UE4 환경에서 assert 는 NDEBUG 로 인해 동작하지 않기 때문에
+  // UE4 의 assertion 함수인 checkf 사용.
+  checkf(condition, TEXT("%s"), ANSI_TO_TCHAR(error_msg.c_str()));
+#else
+  assert(condition && error_msg.c_str());
+#endif
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////

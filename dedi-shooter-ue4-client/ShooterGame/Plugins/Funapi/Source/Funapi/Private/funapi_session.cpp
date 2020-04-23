@@ -4,11 +4,12 @@
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
+#include "funapi_session.h"
+
 #ifdef FUNAPI_UE4
 #include "FunapiPrivatePCH.h"
 #endif
 
-#include "funapi_session.h"
 #include "funapi_send_flag_manager.h"
 #include "funapi_utils.h"
 #include "funapi_tasks.h"
@@ -42,6 +43,8 @@
 // http header
 #define kCookieRequestHeaderField "Cookie"
 #define kCookieResponseHeaderField "SET-COOKIE"
+
+static const size_t kMaxPayloadSize = 1024 * 1024;
 
 namespace fun {
 
@@ -925,8 +928,6 @@ class FunapiSessionImpl : public std::enable_shared_from_this<FunapiSessionImpl>
                    bool priority = false,
                    bool handshake = false);
 
-  bool SendHandShakeMessages(const TransportProtocol protocol);
-
   bool started_;
   int64_t ping_time_ms = 0;
 
@@ -998,8 +999,6 @@ class FunapiSessionImpl : public std::enable_shared_from_this<FunapiSessionImpl>
   fun::vector<fun::string> redirect_cur_tags_;
   fun::vector<fun::string> redirect_target_tags_;
 
-  std::shared_ptr<FunapiSendFlagManager> send_flag_manager_ = nullptr;
-
   void OnRedirect();
 
   void AddMessageToRedirectQueue(const TransportProtocol protocol,
@@ -1030,7 +1029,9 @@ class FunapiTransport : public std::enable_shared_from_this<FunapiTransport> {
 
   bool IsStarted();
   virtual void Start();
-  virtual void Stop(bool use_force = false, std::shared_ptr<FunapiError> error = nullptr);
+  virtual void Stop(bool use_force = false,
+                    std::shared_ptr<FunapiError> error = nullptr,
+                    bool user_did = false);
 
   void SendMessage(std::shared_ptr<FunapiMessage> message,
                    bool priority,
@@ -1159,7 +1160,8 @@ class FunapiTransport : public std::enable_shared_from_this<FunapiTransport> {
   bool first_set_session_id_ = true;
   bool UseFirstSessionId();
 
-  virtual void OnDisconnecting(std::shared_ptr<FunapiError> error = nullptr);
+  virtual void OnDisconnecting(std::shared_ptr<FunapiError> error = nullptr,
+                               bool user_did = false);
 
   int next_decoding_offset_ = 0;
   bool header_decoded_ = false;
@@ -1217,14 +1219,18 @@ FunapiTransport::~FunapiTransport() {
 bool FunapiTransport::EncodeMessage(std::shared_ptr<FunapiMessage> message,
                                     fun::vector<uint8_t> &body,
                                     const EncryptionType encryption_type) {
+
+  if (body.size() > kMaxPayloadSize)
+  {
+    fun::stringstream msg;
+    msg << "The message size is too large to cause an unexpected problem.";
+    msg << "Please make the message size smaller than ";
+    msg << kMaxPayloadSize << ".";
+    DebugUtils::Log(msg.str().c_str());
+  }
+
   HeaderFields header_fields;
   MakeHeaderFields(header_fields, body);
-
-  // log
-  // fun::string body_string(body.cbegin(), body.cend());
-  // DebugUtils::Log("Header to send: %s", header_string.c_str());
-  // DebugUtils::Log("send message: %s", body_string.c_str());
-  // //
 
   compression_->Compress(header_fields, body);
 
@@ -1938,7 +1944,7 @@ void FunapiTransport::OnReceived(const TransportProtocol protocol,
                                  const FunEncoding encoding,
                                  const HeaderFields &header,
                                  const fun::vector<uint8_t> &body) {
-  auto message = FunapiMessage::Create(encoding, body);
+  auto message = FunapiMessage::Create(encoding, body, EncryptionType::kDefaultEncryption);
 
   fun::string msg_type;
   uint32_t ack = 0;
@@ -2005,7 +2011,9 @@ void FunapiTransport::OnReceived(const TransportProtocol protocol,
 }
 
 
-void FunapiTransport::OnDisconnecting(std::shared_ptr<FunapiError> error) {
+void FunapiTransport::OnDisconnecting(std::shared_ptr<FunapiError> error,
+                                      bool user_did)
+{
   SetState(TransportState::kDisconnected);
 
   OnTransportClosed(GetProtocol(), error);
@@ -2051,15 +2059,17 @@ void FunapiTransport::Start() {
 }
 
 
-void FunapiTransport::Stop(bool use_force, std::shared_ptr<FunapiError> error) {
+void FunapiTransport::Stop(bool use_force, std::shared_ptr<FunapiError> error, bool user_did) {
   if (GetState() == TransportState::kDisconnected)
     return;
 
   SetState(TransportState::kDisconnecting);
 
-  if (send_queue_->Empty() || use_force) {
-    PushNetworkThreadTask([this, error]()->bool {
-      OnDisconnecting(error);
+  if (send_queue_->Empty() || use_force)
+  {
+    PushNetworkThreadTask([this, error, user_did]()->bool
+    {
+      OnDisconnecting(error, user_did);
       return true;
     });
   }
@@ -2095,7 +2105,6 @@ class FunapiTcpTransport : public FunapiTransport {
   void ResetClientPingTimeout();
 
   bool UseSodium();
-  bool SendHandShakeMessages();
 
   void Update();
   void Send(bool send_all = false);
@@ -2112,7 +2121,8 @@ class FunapiTcpTransport : public FunapiTransport {
                            const fun::string &error_string,
                            std::shared_ptr<FunapiAddrInfo> addrinfo_res);
 
-  void OnDisconnecting(std::shared_ptr<FunapiError> error = nullptr);
+  void OnDisconnecting(std::shared_ptr<FunapiError> error = nullptr,
+                       bool user_did = false);
 
  private:
   // Ping message-related constants.
@@ -2216,20 +2226,24 @@ void FunapiTcpTransport::Start() {
 }
 
 
-void FunapiTcpTransport::OnDisconnecting(std::shared_ptr<FunapiError> error) {
+void FunapiTcpTransport::OnDisconnecting(std::shared_ptr<FunapiError> error,
+                                         bool user_did)
+{
   tcp_ = nullptr;
 
-  if (ack_receiving_) {
+  if (ack_receiving_)
+  {
     reconnect_first_ack_receiving_ = true;
   }
 
-  if (auto_reconnect_ && !received_redirection_event_) {
+  if (!received_redirection_event_ && auto_reconnect_ && !user_did)
+  {
     SetState(TransportState::kDisconnected);
     StartReconnect();
     return;
   }
 
-  FunapiTransport::OnDisconnecting(error);
+  FunapiTransport::OnDisconnecting(error, user_did);
 }
 
 
@@ -2486,31 +2500,6 @@ bool FunapiTcpTransport::UseSodium() {
 }
 
 
-bool FunapiTcpTransport::SendHandShakeMessages() {
-  bool use_send = false;
-
-  if (auto s = session_impl_.lock()) {
-    for (auto type
-         : {EncryptionType::kChacha20Encryption,
-           EncryptionType::kAes128Encryption}) {
-             if (encrytion_->HasEncryption(type)) {
-               if (false == encrytion_->IsHandShakeCompleted(type))
-               {
-                 use_send = true;
-                 s->SendEmptyMessage(TransportProtocol::kTcp, type);
-               }
-             }
-           }
-
-    if (use_send) {
-      s->SendEmptyMessage(TransportProtocol::kTcp);
-    }
-  }
-
-  return use_send;
-}
-
-
 void FunapiTcpTransport::Send(bool send_all)
 {
   send_buffer_.resize(0);
@@ -2519,11 +2508,7 @@ void FunapiTcpTransport::Send(bool send_all)
   if (!send_handshake_queue_->Empty())
   {
     // 이후 메시지를 처리하기 위해서 다시 Send 플레그를 올려준다.
-    std::shared_ptr<FunapiSendFlagManager> send_flag_manager =
-      FunapiSendFlagManager::Get();
-
-    send_flag_manager->WakeUp();
-
+    FunapiSendFlagManager::Get().WakeUp();
     while (!send_handshake_queue_->Empty())
     {
       msg = send_handshake_queue_->Front();
@@ -2540,11 +2525,7 @@ void FunapiTcpTransport::Send(bool send_all)
   else if (!send_priority_queue_->Empty())
   {
     // 이후 메시지를 처리하기 위해서 다시 Send 플레그를 올려준다.
-    std::shared_ptr<FunapiSendFlagManager> send_flag_manager =
-      FunapiSendFlagManager::Get();
-
-    send_flag_manager->WakeUp();
-
+    FunapiSendFlagManager::Get().WakeUp();
     if (false == encrytion_->IsHandShakeCompleted())
     {
       return;
@@ -2696,7 +2677,8 @@ class FunapiUdpTransport : public FunapiTransport {
   bool EncodeThenSendMessage(std::shared_ptr<FunapiMessage> message,
                              fun::vector<uint8_t> &body,
                              const EncryptionType encryption_type);
-  void OnDisconnecting(std::shared_ptr<FunapiError> error = nullptr);
+  void OnDisconnecting(std::shared_ptr<FunapiError> error = nullptr,
+                       bool use_did = false);
 
  private:
   std::shared_ptr<FunapiUdp> udp_;
@@ -2794,10 +2776,12 @@ void FunapiUdpTransport::Start() {
 }
 
 
-void FunapiUdpTransport::OnDisconnecting(std::shared_ptr<FunapiError> error) {
+void FunapiUdpTransport::OnDisconnecting(std::shared_ptr<FunapiError> error,
+                                         bool user_did)
+{
   udp_ = nullptr;
 
-  FunapiTransport::OnDisconnecting(error);
+  FunapiTransport::OnDisconnecting(error, user_did);
 }
 
 
@@ -2840,11 +2824,7 @@ void FunapiUdpTransport::Send(bool send_all) {
   while (!send_handshake_queue_->Empty())
   {
     // 이후 메시지를 처리하기 위해서 다시 Send 플레그를 올려준다.
-    std::shared_ptr<FunapiSendFlagManager> send_flag_manager =
-        FunapiSendFlagManager::Get();
-
-    send_flag_manager->WakeUp();
-
+    FunapiSendFlagManager::Get().WakeUp();
     msg = send_handshake_queue_->Front();
     if (FunapiTransport::EncodeThenSendMessage(msg)) {
       send_handshake_queue_->PopFront();
@@ -2911,7 +2891,8 @@ class FunapiHttpTransport : public FunapiTransport {
   bool EncodeThenSendMessage(std::shared_ptr<FunapiMessage> message,
                              fun::vector<uint8_t> &body,
                              const EncryptionType encryption_type);
-  void OnDisconnecting(std::shared_ptr<FunapiError> error = nullptr);
+  void OnDisconnecting(std::shared_ptr<FunapiError> error = nullptr,
+                       bool user_did = false);
 
  private:
   void WebResponseHeaderCb(const void *data, int len, HeaderFields &header_fields);
@@ -2984,8 +2965,10 @@ void FunapiHttpTransport::Start() {
 }
 
 
-void FunapiHttpTransport::OnDisconnecting(std::shared_ptr<FunapiError> error) {
-  FunapiTransport::OnDisconnecting(error);
+void FunapiHttpTransport::OnDisconnecting(std::shared_ptr<FunapiError> error,
+                                          bool user_did)
+{
+  FunapiTransport::OnDisconnecting(error, user_did);
 }
 
 
@@ -3227,7 +3210,8 @@ class FunapiWebsocketTransport : public FunapiTransport {
   bool EncodeThenSendMessage(std::shared_ptr<FunapiMessage> message,
                              fun::vector<uint8_t> &body,
                              const EncryptionType encryption_type);
-  void OnDisconnecting(std::shared_ptr<FunapiError> error = nullptr);
+  void OnDisconnecting(std::shared_ptr<FunapiError> error = nullptr,
+                       bool user_did = false);
 
  private:
   fun::vector<uint8_t> receiving_vector_;
@@ -3342,8 +3326,10 @@ void FunapiWebsocketTransport::Start() {
 }
 
 
-void FunapiWebsocketTransport::OnDisconnecting(std::shared_ptr<FunapiError> error) {
-  FunapiTransport::OnDisconnecting(error);
+void FunapiWebsocketTransport::OnDisconnecting(std::shared_ptr<FunapiError> error,
+                                               bool user_did)
+{
+  FunapiTransport::OnDisconnecting(error, user_did);
 }
 
 
@@ -3556,10 +3542,6 @@ void FunapiSessionImpl::Initialize()
     session_id_ = FunapiSessionId::Create();
 
     network_thread_ = FunapiThread::Get("_network");
-
-    // FunapiSession : FunapiSendFlagManager  -> N : 1 의 구조를 가진다.
-    // 모든 FunapiSession 이 제거 되었을 때 FunapiSendFlagManager 도 제거된다.
-    send_flag_manager_ = FunapiSendFlagManager::Get();
 }
 
 
@@ -3800,13 +3782,19 @@ void FunapiSessionImpl::Close() {
 }
 
 
-void FunapiSessionImpl::OnClose(const TransportProtocol protocol) {
-  if (auto transport = GetTransport(protocol)) {
+void FunapiSessionImpl::OnClose(const TransportProtocol protocol)
+{
+  if (auto transport = GetTransport(protocol))
+  {
     auto state = transport->GetState();
-    if (state == TransportState::kConnected) {
-      transport->Stop();
+    if (state == TransportState::kConnected)
+    {
+      transport->Stop(false, /* force */
+                      nullptr, /* error */
+                      true); /* user did */
     }
-    else if (state == TransportState::kConnecting) {
+    else if (state == TransportState::kConnecting)
+    {
       Close(protocol);
     }
   }
@@ -3840,7 +3828,7 @@ void FunapiSessionImpl::SendMessage(std::shared_ptr<FunapiMessage> &message, con
         if (transport)
         {
             transport->SendMessage(message, priority, handshake);
-            send_flag_manager_->WakeUp();
+            FunapiSendFlagManager::Get().WakeUp();
         }
         else
         {
@@ -3865,7 +3853,7 @@ void FunapiSessionImpl::SendMessage(std::shared_ptr<FunapiMessage> &message, con
         if (transport)
         {
           transport->SendMessage(message, priority, handshake);
-          send_flag_manager_->WakeUp();
+          FunapiSendFlagManager::Get().WakeUp();
         }
     }
 }
@@ -4104,15 +4092,13 @@ void FunapiSessionImpl::OnSessionClose(const TransportProtocol protocol,
       return;
     }
 
-    ResetSession();
-
     auto encoding = GetEncoding(protocol);
-    fun::string temp_session_id = GetSessionId(FunEncoding::kJson);
+    fun::string current_session_id = GetSessionId(FunEncoding::kJson);
 
     OnSessionEvent(protocol,
                    encoding,
                    SessionEventType::kClosed,
-                   temp_session_id,
+                   current_session_id,
                    nullptr /*error*/);
 }
 
@@ -4400,6 +4386,8 @@ void FunapiSessionImpl::OnRedirect()
           continue;
         }
 
+        // Redirection 이전 세션에서 사용한 옵션 또는 등록된 option_handler 를 통해 Transport 옵션을 설정.
+        // 만약 옵션이 사용되지 않았거나 option_handler 가 등록되지 않은 경우 option 은 nullptr 이다.
         std::shared_ptr<FunapiTransportOption> option = nullptr;
         if (transport_option_handler_)
         {
@@ -4409,7 +4397,6 @@ void FunapiSessionImpl::OnRedirect()
         {
           option = o;
         }
-        assert(option);
 
         redirect_encodings_[connect_protocol] = connect_encoding;
 
@@ -4795,8 +4782,13 @@ void FunapiSessionImpl::OnSessionEvent(const TransportProtocol protocol,
     PushTaskQueue([this, protocol, type, session_id, error]()->bool {
       if (auto s = session_.lock()) {
         on_session_event_(s, protocol, type, session_id, error);
+
+        if (type == SessionEventType::kClosed) {
+          ResetSession();
+          return true;
+        }
         // send buffer 에 있는 메세지를 모두 전송 시도 한다.
-        send_flag_manager_->WakeUp();
+        FunapiSendFlagManager::Get().WakeUp();
       }
       return true;
     });
@@ -5162,16 +5154,6 @@ bool FunapiSessionImpl::UseSodium(const TransportProtocol protocol) {
 }
 
 
-bool FunapiSessionImpl::SendHandShakeMessages(const TransportProtocol protocol) {
-  if (protocol == TransportProtocol::kTcp) {
-    if (auto t = std::static_pointer_cast<FunapiTcpTransport>(GetTransport(TransportProtocol::kTcp))) {
-      return t->SendHandShakeMessages();
-    }
-  }
-  return false;
-}
-
-
 void FunapiSessionImpl::UpdateAll() {
   auto v_sessions = FunapiSessionImpl::GetSessionImpls();
 
@@ -5274,7 +5256,7 @@ void FunapiSessionImpl::SendUnsentQueueMessages()
                 PushTaskQueue([this, protocol, message]()->bool
                 {
                     send_queues_[static_cast<int>(protocol)]->PushBack(message->GetMessage());
-                    send_flag_manager_->WakeUp();
+                    FunapiSendFlagManager::Get().WakeUp();
                     return true;
                 });
 

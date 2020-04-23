@@ -4,11 +4,12 @@
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
+#include "funapi_option.h"
+
 #ifdef FUNAPI_UE4
 #include "FunapiPrivatePCH.h"
 #endif
 
-#include "funapi_option.h"
 #include "funapi_utils.h"
 #include "funapi_encryption.h"
 #include "funapi_tasks.h"
@@ -109,15 +110,12 @@ fun::string FunapiErrorImpl::DebugString() {
   fun::stringstream ss;
 
   ss << "ErrorType=" << GetErrorTypeString();
-  ss << ":";
+  ss << ":" << "(" << error_code_ << ")";
 
-  if (error_code_ != 0) {
-    ss << "(" << error_code_ << ")";
-
-    if (!error_string_.empty()) {
-      ss << " " << error_string_;
-    }
+  if (!error_string_.empty()) {
+    ss << " " << error_string_;
   }
+
 
   return ss.str();
 }
