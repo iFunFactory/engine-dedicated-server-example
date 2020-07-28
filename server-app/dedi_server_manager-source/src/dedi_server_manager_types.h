@@ -10,13 +10,13 @@
 #include <funapi.h>
 
 
-namespace dedi_server_manger {
+namespace dedi_server_manager {
 
 using fun::string;
 using fun::shared_ptr;
 using fun::weak_ptr;
 using fun::Uuid;
 
-}  // namespace dedi_server_manger
+}  // namespace dedi_server_manager
 
 #endif  // SRC_DEDI_SERVER_MANGER_TYPES_H_

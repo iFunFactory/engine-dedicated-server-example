@@ -21,13 +21,13 @@ ENABLE_TESTING()
 
 # Sets cmake PROJECT_NAME var before importing Funapi.cmake.
 # Enables only C/C++.
-project(dedi_server_manger CXX C)
+project(dedi_server_manager CXX C)
 
-set(PROJECT_NAME_CAMEL_CASE DediServerManger)
+set(PROJECT_NAME_CAMEL_CASE DediServerManager)
 
 # Sets Mono project.
 set(IS_MONO_PROJECT false)
-set(MONO_DLL_NAME DediServerManger.dll)
+set(MONO_DLL_NAME DediServerManager.dll)
 
 # Sets USE_CCACHE if you have installed ccache and want to leverage it.
 set(USE_CCACHE true)

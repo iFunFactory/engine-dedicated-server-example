@@ -8,7 +8,7 @@
 #include <funapi.h>
 #include <gflags/gflags.h>
 
-#include <src/dedi_server_manger_object.h>
+#include <src/dedi_server_manager_object.h>
 
 #include <src/bot/simple_bot_client.h>
 #include <src/dsm/dedicated_server_helper.h>
@@ -30,7 +30,7 @@ DECLARE_bool(enable_redis);
 
 
 // 봇 클라이언트 개수를 지정합니다.
-// dedi_server_manger.bot-local -bot_clients=<클라이언트 개수> 로 지정할 수
+// dedi_server_manager.bot-local -bot_clients=<클라이언트 개수> 로 지정할 수
 // 있습니다.
 DEFINE_int64(bot_clients, 2, "Number of clients that are used for test.");
 
@@ -44,7 +44,7 @@ namespace {
 // 1. 프로젝트 생성 후 개발자가 만들어야 할 모든 코드는 src/dsm 에 있습니다.
 // 2. bot 클라이언트가 사용할 코드는 src/bot 에 있습니다.
 //
-class DediServerMangerServer : public Component {
+class DediServerManagerServer : public Component {
  public:
   static bool Install(const ArgumentMap &arguments) {
     LOG(INFO) << "Built using Engine version: " << FUNAPI_BUILD_IDENTIFIER;
@@ -60,7 +60,7 @@ class DediServerMangerServer : public Component {
     // Do not touch this, unless you fully understand what you are doing.
     // 엔진 ORM 초기화 작업을 진행합니다.
     // 이 코드가 하는 역할을 명확하게 알기 전까지는 삭제하지 않고 두는 게 좋습니다.
-    dedi_server_manger::ObjectModelInit();
+    dedi_server_manager::ObjectModelInit();
 
     // Redis must be enabled for Dedicated Server Manager.
     // Please see 'redis_servers' of Redis section in your MANIFEST.json
@@ -127,4 +127,4 @@ class DediServerMangerServer : public Component {
 }  // unnamed namespace
 
 
-REGISTER_STARTABLE_COMPONENT(DediServerMangerServer, DediServerMangerServer)
+REGISTER_STARTABLE_COMPONENT(DediServerManagerServer, DediServerManagerServer)

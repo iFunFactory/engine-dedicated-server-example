@@ -19,7 +19,7 @@
 #include <glog/logging.h>
 
 
-namespace dedi_server_manger {
+namespace dedi_server_manager {
 
 
 
@@ -512,6 +512,6 @@ bool InitializeCustomerServiceAPI(CsApiHandler *handler);
 }  // namespace cs_api
 #endif  // ENABLE_IFUN_DEPLOY_COMPATIBILITY
 
-};  // namespace dedi_server_manger
+};  // namespace dedi_server_manager
 
 #endif  // SRC_OBJECT_MODEL_COMMON_H

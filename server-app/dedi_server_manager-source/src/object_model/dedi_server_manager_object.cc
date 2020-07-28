@@ -7,7 +7,7 @@
 // THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT EDIT.
 
 
-#include "../dedi_server_manger_object.h"
+#include "../dedi_server_manager_object.h"
 
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -22,7 +22,7 @@
 #include <map>
 
 
-namespace dedi_server_manger {
+namespace dedi_server_manager {
 
 using fun::ApiService;
 using fun::string;
@@ -905,4 +905,4 @@ bool InitializeCustomerServiceAPI(CsApiHandler *handler) {
 }  // namespace cs_api
 #endif  // ENABLE_IFUN_DEPLOY_COMPATIBILITY
 
-};  // namespace dedi_server_manger
+};  // namespace dedi_server_manager

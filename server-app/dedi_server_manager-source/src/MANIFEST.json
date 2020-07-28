@@ -2,14 +2,14 @@
   "version": 1,
   "components": [
     {
-      "name": "DediServerMangerServer",
+      "name": "DediServerManagerServer",
       "arguments": {
         "example_arg1": "val1",
         "example_arg2": 100
       },
       "dependency": {
         "AppInfo": {
-          "app_id": "DediServerManger",
+          "app_id": "DediServerManager",
           "client_current_version": "0.0.3",
           "client_compatible_versions": ["0.0.1", "0.0.2"],
           "client_update_info": "",
@@ -290,7 +290,7 @@
             "dedicated_server_spawn_timeout": 30
           }
       },
-      "library": "libdedi_server_manger.so"
+      "library": "libdedi_server_manager.so"
     }
   ]
 }
