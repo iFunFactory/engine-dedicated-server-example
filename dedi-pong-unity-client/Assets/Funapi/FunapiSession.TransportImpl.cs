@@ -38,10 +38,6 @@ namespace Fun
                 setAddress(hostname_or_ip, port);
 
                 ssl_ = (option as TcpTransportOption).UseTLS;
-                if (ssl_)
-                {
-                    TrustManager.LoadMozRoots();
-                }
             }
 
             public override HostAddr address
@@ -76,6 +72,7 @@ namespace Fun
                 base.onStart();
 
                 state_ = State.kConnecting;
+                sent_length_ = 0;
 
                 try
                 {
@@ -118,54 +115,58 @@ namespace Fun
                     }
                 }
 
+                sent_length_ = 0;
+
                 base.onClose();
             }
 
             protected override void wireSend ()
             {
-                byte[] send_buffer = null;
-                List<ArraySegment<byte>> list = new List<ArraySegment<byte>>();
-                int length = 0;
-
-                lock (sending_lock_)
-                {
-                    foreach (FunapiMessage msg in sending_)
-                    {
-                        if (msg.header.Count > 0)
-                        {
-                            list.Add(msg.header);
-                            length += msg.header.Count;
-                        }
-
-                        if (msg.body.Count > 0)
-                        {
-                            list.Add(msg.body);
-                            length += msg.body.Count;
-                        }
-                    }
-
-                    if (ssl_)
-                    {
-                        send_buffer = new byte[length];
-                        ssl_send_size_ = length;
-
-                        int offset = 0;
-                        foreach (ArraySegment<byte> data in list)
-                        {
-                            Buffer.BlockCopy(data.Array, 0, send_buffer, offset, data.Count);
-                            offset += data.Count;
-                        }
-                    }
-                }
-
                 try
                 {
+                    List<ArraySegment<byte>> list = new List<ArraySegment<byte>>();
+                    int length = 0;
+
+                    lock (sending_lock_)
+                    {
+                        if (sent_length_ > 0)
+                            return;
+
+                        foreach (FunapiMessage msg in sending_)
+                        {
+                            if (list.Count > 0 && (length + msg.header.Count + msg.body.Count) > kSendBufferMax)
+                                break;
+
+                            // Send headers unconditionally.
+                            if (msg.header.Count > 0)
+                            {
+                                list.Add(msg.header);
+                                length += msg.header.Count;
+                            }
+
+                            // Send bodies but if the length is larger than kSendBufferMax, sends it in pieces.
+                            if (msg.body.Count > 0)
+                            {
+                                if (length + msg.body.Count > kSendBufferMax)
+                                {
+                                    int partial_sent = kSendBufferMax - length;
+                                    list.Add(new ArraySegment<byte>(msg.body.Array, msg.body.Offset, partial_sent));
+                                    length += partial_sent;
+                                    break;
+                                }
+                                else
+                                {
+                                    list.Add(msg.body);
+                                    length += msg.body.Count;
+                                }
+                            }
+                        }
+                    }
+
                     lock (sock_lock_)
                     {
                         if (sock_ == null)
-                        {
                             return;
-                        }
 
                         if (ssl_)
                         {
@@ -175,10 +176,21 @@ namespace Fun
                                 return;
                             }
 
+                            byte[] send_buffer = new byte[length];
+                            int offset = 0;
+
+                            foreach (ArraySegment<byte> data in list)
+                            {
+                                Buffer.BlockCopy(data.Array, 0, send_buffer, offset, data.Count);
+                                offset += data.Count;
+                            }
+
+                            sent_length_ = length;
                             ssl_stream_.BeginWrite(send_buffer, 0, length, new AsyncCallback(this.sendBytesCb), ssl_stream_);
                         }
                         else
                         {
+                            sent_length_ = length;
                             sock_.BeginSend(list, SocketFlags.None, new AsyncCallback(this.sendBytesCb), this);
                         }
                     }
@@ -205,9 +217,7 @@ namespace Fun
                     lock (sock_lock_)
                     {
                         if (sock_ == null)
-                        {
                             return;
-                        }
 
                         sock_.EndConnect(ar);
                         if (sock_.Connected == false)
@@ -294,9 +304,7 @@ namespace Fun
                     lock (sock_lock_)
                     {
                         if (sock_ == null)
-                        {
                             return;
-                        }
 
                         if (ssl_)
                         {
@@ -307,9 +315,7 @@ namespace Fun
                             }
 
                             ssl_stream_.EndWrite(ar);
-
-                            nSent = ssl_send_size_;
-                            ssl_send_size_ = 0;
+                            nSent = sent_length_;
                         }
                         else
                         {
@@ -328,9 +334,25 @@ namespace Fun
                                     // removes a sent message.
                                     FunapiMessage msg = sending_[0];
                                     int length = msg.header.Count + msg.body.Count;
-                                    nSent -= length;
+                                    if (length <= nSent)
+                                    {
+                                        if (msg.header.Count <= 0)
+                                            debug.LogDebug("[TCP] Partially sent {0} bytes. 0 bytes left.", nSent);
 
-                                    sending_.RemoveAt(0);
+                                        nSent -= length;
+                                        sending_.RemoveAt(0);
+                                    }
+                                    else
+                                    {
+                                        int offset = nSent - msg.header.Count;
+
+                                        if (msg.header.Count > 0)
+                                            msg.header = new ArraySegment<byte>();
+
+                                        msg.body = new ArraySegment<byte>(msg.body.Array, msg.body.Offset + offset, msg.body.Count - offset);
+                                        debug.LogDebug("[TCP] Partially sent {0} bytes. {1} bytes left.", nSent, msg.body.Count);
+                                        break;
+                                    }
                                 }
                                 else
                                 {
@@ -339,10 +361,12 @@ namespace Fun
                                 }
                             }
 
-                            if (sending_.Count != 0)
+                            if (sending_.Count > 0)
                             {
-                                debug.LogError("[TCP] {0} message(s) left in the sending buffer.", sending_.Count);
+                                debug.LogDebug("[TCP] {0} message(s) left in the sending buffer.", sending_.Count);
                             }
+
+                            sent_length_ = 0;
 
                             // Sends pending messages.
                             checkPendingMessages();
@@ -375,9 +399,7 @@ namespace Fun
                     lock (sock_lock_)
                     {
                         if (sock_ == null)
-                        {
                             return;
-                        }
 
                         if (ssl_)
                         {
@@ -413,12 +435,12 @@ namespace Fun
                                 if (ssl_)
                                 {
                                     ssl_stream_.BeginRead(receive_buffer_, received_size_, receive_buffer_.Length - received_size_,
-                                                         new AsyncCallback(this.receiveBytesCb), ssl_stream_);
+                                                          new AsyncCallback(this.receiveBytesCb), ssl_stream_);
                                 }
                                 else
                                 {
                                     ArraySegment<byte> residual = new ArraySegment<byte>(
-                                    receive_buffer_, received_size_, receive_buffer_.Length - received_size_);
+                                        receive_buffer_, received_size_, receive_buffer_.Length - received_size_);
 
                                     List<ArraySegment<byte>> buffer = new List<ArraySegment<byte>>();
                                     buffer.Add(residual);
@@ -440,7 +462,7 @@ namespace Fun
                 }
                 catch (Exception e)
                 {
-                    // When Stop is called Socket.EndReceive may return a NullReferenceException
+                    // When Stop is called, Socket.EndReceive may return a NullReferenceException
                     if (e is ObjectDisposedException || e is NullReferenceException)
                     {
                         debug.LogDebug("[TCP] BeginReceive operation has been cancelled.");
@@ -458,9 +480,9 @@ namespace Fun
             Socket sock_;
             HostIP addr_;
             bool ssl_ = false;
-            int ssl_send_size_;
             SslStream ssl_stream_ = null;
             object sock_lock_ = new object();
+            int sent_length_ = 0;
         }
 
 
@@ -497,7 +519,7 @@ namespace Fun
                 addr_ = new HostIP(host, port);
 
                 debug.Log("[UDP] {0}:{1}, {2}, {3}, Compression:{4}, Sequence:{5}, ConnectionTimeout:{6}",
-                          addr_.ip, addr_.port, convertString(encoding_), convertString(option_.Encryption),
+                          addr_.host, addr_.port, convertString(encoding_), convertString(option_.Encryption),
                           convertString(option_.CompressionType), option_.SequenceValidation,
                           option_.ConnectionTimeout);
             }
@@ -505,6 +527,9 @@ namespace Fun
             protected override void onStart ()
             {
                 base.onStart();
+
+                sent_length_ = 0;
+                state_ = State.kConnecting;
 
                 try
                 {
@@ -528,6 +553,7 @@ namespace Fun
                         debug.LogDebug("[UDP] bind {0}:{1}", lep.Address, lep.Port);
 
                         send_ep_ = new IPEndPoint(addr_.ip, addr_.port);
+                        debug.LogDebug("[UDP] host ip {0}", addr_.ip);
                         if (addr_.inet == AddressFamily.InterNetworkV6)
                             receive_ep_ = (EndPoint)new IPEndPoint(IPAddress.IPv6Any, addr_.port);
                         else
@@ -536,13 +562,11 @@ namespace Fun
                         lock (receive_lock_)
                         {
                             sock_.BeginReceiveFrom(receive_buffer_, 0, receive_buffer_.Length, SocketFlags.None,
-                                                ref receive_ep_, new AsyncCallback(this.receiveBytesCb), this);
+                                                   ref receive_ep_, new AsyncCallback(this.receiveBytesCb), this);
                         }
                     }
 
-                    state_ = State.kConnected;
-
-                    onStarted();
+                    mono.StartCoroutine(tryToSendUdpEmptyMessage());
                 }
                 catch (Exception e)
                 {
@@ -564,6 +588,8 @@ namespace Fun
                     }
                 }
 
+                sent_length_ = 0;
+
                 base.onClose();
             }
 
@@ -574,6 +600,9 @@ namespace Fun
 
                 lock (sending_lock_)
                 {
+                    if (sent_length_ > 0)
+                        return;
+
                     FunDebug.Assert(sending_.Count > 0);
 
                     // Sends one message.
@@ -606,6 +635,7 @@ namespace Fun
                     {
                         lock (sock_lock_)
                         {
+                            sent_length_ = offset;
                             sock_.BeginSendTo(send_buffer_, 0, offset, SocketFlags.None,
                                               send_ep_, new AsyncCallback(this.sendBytesCb), this);
                         }
@@ -645,6 +675,7 @@ namespace Fun
                         // Removes header and body segment
                         int nLength = msg.header.Count + msg.body.Count;
                         sending_.RemoveAt(0);
+                        sent_length_ = 0;
 
                         if (nSent != nLength)
                         {
@@ -736,6 +767,7 @@ namespace Fun
                 }
             }
 
+
 #if FIXED_UDP_LOCAL_PORT
             // This class is to prevent UDP local ports from overlapping.
             static class LocalPort
@@ -802,6 +834,7 @@ namespace Fun
 
             // Sending buffer
             byte[] send_buffer_ = new byte[kUdpBufferSize];
+            int sent_length_ = 0;
         }
 
 
@@ -817,9 +850,6 @@ namespace Fun
                 option = http_option;
 
                 setAddress(hostname_or_ip, port, https);
-
-                if (https)
-                    TrustManager.LoadMozRoots();
             }
 
             public override HostAddr address
@@ -1454,35 +1484,35 @@ namespace Fun
                 }
 
                 [DllImport("__Internal")]
-                private static extern int SocketCreate (string url);
+                private static extern int SocketJSCreate (string url);
 
                 [DllImport("__Internal")]
-                private static extern int SocketState (int socketInstance);
+                private static extern int SocketJSState (int socketInstance);
 
                 [DllImport("__Internal")]
-                private static extern void SocketSend (int socketInstance, byte[] ptr, int length);
+                private static extern void SocketJSSend (int socketInstance, byte[] ptr, int length);
 
                 [DllImport("__Internal")]
-                private static extern void SocketRecv (int socketInstance, byte[] ptr, int length);
+                private static extern void SocketJSRecv (int socketInstance, byte[] ptr, int length);
 
                 [DllImport("__Internal")]
-                private static extern int SocketRecvLength (int socketInstance);
+                private static extern int SocketJSRecvLength (int socketInstance);
 
                 [DllImport("__Internal")]
-                private static extern void SocketClose (int socketInstance);
+                private static extern void SocketJSClose (int socketInstance);
 
                 [DllImport("__Internal")]
-                private static extern string SocketError (int socketInstance);
+                private static extern string SocketJSError (int socketInstance);
 
                 [DllImport("__Internal")]
-                private static extern string SocketCloseReason (int socketInstance);
+                private static extern string SocketJSCloseReason (int socketInstance);
 
                 [DllImport("__Internal")]
-                private static extern int SocketCloseCode (int socketInstance);
+                private static extern int SocketJSCloseCode (int socketInstance);
 
                 public void Send(byte[] buffer)
                 {
-                    SocketSend (native_ref_, buffer, buffer.Length);
+                    SocketJSSend (native_ref_, buffer, buffer.Length);
 
                     if (SendCallback != null)
                     {
@@ -1500,7 +1530,7 @@ namespace Fun
                             yield break;
                         }
 
-                        length = SocketRecvLength (native_ref_);
+                        length = SocketJSRecvLength (native_ref_);
                         if (length != 0)
                         {
                             break;
@@ -1510,7 +1540,7 @@ namespace Fun
                     }
 
                     byte[] buffer = new byte[length];
-                    SocketRecv (native_ref_, buffer, length);
+                    SocketJSRecv (native_ref_, buffer, length);
 
                     if (ReceiveCallback != null)
                     {
@@ -1529,7 +1559,7 @@ namespace Fun
                             yield break;
                         }
 
-                        reason = SocketError(native_ref_);
+                        reason = SocketJSError(native_ref_);
                         if (reason != null)
                         {
                             break;
@@ -1546,7 +1576,7 @@ namespace Fun
 
                 public IEnumerator Connect()
                 {
-                    native_ref_ = SocketCreate (url_.ToString());
+                    native_ref_ = SocketJSCreate (url_.ToString());
 
                     while (true)
                     {
@@ -1555,7 +1585,7 @@ namespace Fun
                             yield break;
                         }
 
-                        if (SocketState(native_ref_) != 0)
+                        if (SocketJSState(native_ref_) != 0)
                         {
                             break;
                         }
@@ -1571,11 +1601,11 @@ namespace Fun
 
                 public IEnumerator Close()
                 {
-                    SocketClose(native_ref_);
+                    SocketJSClose(native_ref_);
 
                     while (true)
                     {
-                        if(SocketCloseCode(native_ref_) != 0)
+                        if(SocketJSCloseCode(native_ref_) != 0)
                         {
                             break;
                         }
@@ -1595,7 +1625,7 @@ namespace Fun
                 {
                     get
                     {
-                        string reason = SocketCloseReason (native_ref_);
+                        string reason = SocketJSCloseReason (native_ref_);
                         return reason == null ? "" : reason;
                     }
                 }
@@ -1604,7 +1634,7 @@ namespace Fun
                 {
                     get
                     {
-                        return SocketCloseCode (native_ref_);
+                        return SocketJSCloseCode (native_ref_);
                     }
                 }
 
@@ -1651,8 +1681,11 @@ namespace Fun
             {
                 addr_ = new HostAddr(host, port);
 
+                WebsocketTransportOption ws_option = (WebsocketTransportOption)option_;
+                wss_ = ws_option.WSS;
+
                 // Sets host url
-                host_url_ = string.Format("ws://{0}:{1}/", host, port);
+                host_url_ = string.Format("{0}://{1}:{2}/", wss_ ? "wss" : "ws", host, port);
 
                 debug.Log("[Websocket] {0}, {1}, {2}, Compression:{3}, ConnectionTimeout:{4}",
                           host_url_, convertString(encoding_), convertString(option_.Encryption),
@@ -1664,6 +1697,7 @@ namespace Fun
                 base.onStart();
 
                 state_ = State.kConnecting;
+                sent_length_ = 0;
 
                 lock (sock_lock_)
                 {
@@ -1703,6 +1737,8 @@ namespace Fun
                     }
                 }
 
+                sent_length_ = 0;
+
                 base.onClose();
             }
 
@@ -1710,14 +1746,22 @@ namespace Fun
             {
                 try
                 {
-                    int length = getSendingBufferLength();
-                    byte[] buffer = new byte[length];
+                    byte[] buffer = null;
                     int offset = 0;
 
                     lock (sending_lock_)
                     {
+                        if (sent_length_ > 0)
+                            return;
+
+                        int length = getSendingBufferLength();
+                        buffer = new byte[length];
+
                         foreach (FunapiMessage msg in sending_)
                         {
+                            if (offset > 0 && (offset + msg.header.Count + msg.body.Count) > length)
+                                break;
+
                             if (msg.header.Count > 0)
                             {
                                 Buffer.BlockCopy(msg.header.Array, 0, buffer, offset, msg.header.Count);
@@ -1729,16 +1773,16 @@ namespace Fun
                                 offset += msg.body.Count;
                             }
                         }
+
+                        FunDebug.Assert(offset == length);
                     }
 
                     lock (sock_lock_)
                     {
                         if (wsock_ == null)
-                        {
                             return;
-                        }
 
-                        sending_length_ = length;
+                        sent_length_ = offset;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
                         wsock_.Send(buffer);
@@ -1839,7 +1883,7 @@ namespace Fun
                         return;
                     }
 
-                    int nSent = sending_length_;
+                    int nSent = sent_length_;
                     if (nSent > 0)
                     {
                         lock (sending_lock_)
@@ -1862,12 +1906,12 @@ namespace Fun
                                 }
                             }
 
-                            if (sending_.Count != 0)
+                            if (sending_.Count > 0)
                             {
-                                debug.LogError("[Websocket] {0} message(s) left in the sending buffer.", sending_.Count);
+                                debug.LogDebug("[Websocket] {0} message(s) left in the sending buffer.", sending_.Count);
                             }
 
-                            sending_length_ = 0;
+                            sent_length_ = 0;
 
                             // Sends pending messages
                             checkPendingMessages();
@@ -1917,7 +1961,7 @@ namespace Fun
                 {
                     TransportError error = new TransportError();
                     error.type = TransportError.Type.kReceivingFailed;
-                    error.message = "[Websocket] Failure in receiveBytesCb: " + e.ToString();
+                    error.message = "[Websocket] Failure in receiveBytesJSCb: " + e.ToString();
                     onFailure(error);
                 }
             }
@@ -1964,13 +2008,14 @@ namespace Fun
 
             HostAddr addr_;
             string host_url_;
+            bool wss_ = false;
 #if UNITY_WEBGL && !UNITY_EDITOR
             WebSocketJS wsock_;
 #else
             WebSocket wsock_;
 #endif
             object sock_lock_ = new object();
-            int sending_length_ = 0;
+            int sent_length_ = 0;
         }
     }
 

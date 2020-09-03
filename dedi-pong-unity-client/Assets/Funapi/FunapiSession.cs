@@ -167,6 +167,31 @@ namespace Fun
             addCommand(new CmdStopAll(this));
         }
 
+        public void CloseRequest ()
+        {
+            if (!Connected)
+            {
+                debug.Log("Session.CloseRequest() is called but the session is not connected.");
+                return;
+            }
+
+            Transport transport = GetTransport();
+            if (transport == null)
+            {
+                debug.LogWarning("Session.CloseRequest() is called but can't find a default transport.");
+                return;
+            }
+
+            if (transport.encoding == FunEncoding.kJson)
+            {
+                SendMessage(kCloseSessionType, FunapiMessage.Deserialize("{}"), transport.protocol);
+            }
+            else if (transport.encoding == FunEncoding.kProtobuf)
+            {
+                SendMessage(kCloseSessionType, new FunMessage(), transport.protocol);
+            }
+        }
+
 
         //
         // FunapiMono.Listener-related functions
@@ -481,6 +506,15 @@ namespace Fun
             server_address_ = host;
             default_protocol_ = TransportProtocol.kDefault;
 
+            // Applying the required options to create the transport first.
+            if (redirect_option_ != null)
+            {
+                option_.sessionReliability = redirect_option_.sessionReliability;
+                option_.sendSessionIdOnlyOnce = redirect_option_.sendSessionIdOnlyOnce;
+                option_.delayedAckInterval = redirect_option_.delayedAckInterval;
+                option_.encryptionPublicKey = redirect_option_.encryptionPublicKey;
+            }
+
             // Adds transports.
             foreach (RedirectInfo info in redirect_list_.Values)
             {
@@ -581,6 +615,11 @@ namespace Fun
         public TransportProtocol DefaultProtocol
         {
             get { return default_protocol_; }
+        }
+
+        public SessionId Id
+        {
+            get { return session_id_; }
         }
 
         public string GetSessionId ()
@@ -818,6 +857,17 @@ namespace Fun
                 SessionEventCallback(type, session_id_);
         }
 
+        SessionOption getSessionOption (string flavor)
+        {
+            SessionOption option = null;
+
+            // Get option from session option callback.
+            if (SessionOptionCallback != null)
+                option = SessionOptionCallback(flavor);
+
+            return option;
+        }
+
 
         //
         // Transport-related functions
@@ -831,6 +881,8 @@ namespace Fun
                     option = new TcpTransportOption();
                 else if (protocol == TransportProtocol.kHttp)
                     option = new HttpTransportOption();
+                else if (protocol == TransportProtocol.kWebsocket)
+                    option = new WebsocketTransportOption();
                 else
                     option = new TransportOption();
             }
@@ -876,6 +928,7 @@ namespace Fun
                 transport.ErrorCallback += onTransportError;
                 transport.ReceivedCallback += onTransportMessage;
                 transport.mono = this;
+                transport.session = this;
 
                 transport.Init();
 
@@ -1408,6 +1461,7 @@ namespace Fun
             }
 
             redirect_token_ = token;
+            redirect_option_ = getSessionOption(flavor);
             wait_for_redirect_ = true;
 
             // Stopping all transports.
@@ -1416,7 +1470,15 @@ namespace Fun
                 foreach (Transport transport in transports_.Values)
                 {
                     transport.IsRedirecting = true;
-                    transport.Stop();
+
+                    if (!option_.sessionReliability)
+                    {
+                        transport.Stop();
+                    }
+                    else
+                    {
+                        StartCoroutine(tryToStopTransport(transport));
+                    }
                 }
             }
 
@@ -1460,7 +1522,12 @@ namespace Fun
                 state = State.kConnected;
                 wait_for_redirect_ = false;
 
-                onSessionEvent(SessionEventType.kRedirectSucceeded);
+                if (redirect_option_ != null)
+                {
+                    option_ = redirect_option_;
+                }
+
+                onSessionEventCallback(SessionEventType.kRedirectSucceeded);
             }
             else
             {
@@ -1744,11 +1811,15 @@ namespace Fun
         const string kIntMessageType = "_int#";
         const string kMessageTypeField = "_msgtype";
         const string kSessionIdField = "_sid";
+        const string kUdpHandshakeIdField = "_udp_handshake_id";
         const string kSeqNumberField = "_seq";
         const string kAckNumberField = "_ack";
         const string kEmptyMessageType = "_empty";
         const string kSessionOpenedType = "_session_opened";
+        const string kUdpHandShakeType = "_udp_handshake";
+        const string kUdpAttachedType = "_udp_attached";
         const string kSessionClosedType = "_session_closed";
+        const string kCloseSessionType = "_close_session";
         const string kMaintenanceType = "_maintenance";
         const string kMulticastMsgType = "_multicast";
         const string kRedirectType = "_sc_redirect";
@@ -1756,7 +1827,8 @@ namespace Fun
 
         // Funapi message-related events.
         public event Action<SessionEventType, string> SessionEventCallback;                     // type, session id
-        public event Func<string, TransportProtocol, TransportOption> TransportOptionCallback;  // flavor, protocol (return: option)
+        public event Func<string, SessionOption> SessionOptionCallback;                         // flavor, (return: session option)
+        public event Func<string, TransportProtocol, TransportOption> TransportOptionCallback;  // flavor, protocol (return: transport option)
         public event Func<TransportProtocol, FunapiCompressor> CreateCompressorCallback;        // protocol (return: compressor)
         public event Action<TransportProtocol, TransportEventType> TransportEventCallback;      // protocol, type
         public event Action<TransportProtocol, TransportError> TransportErrorCallback;          // protocol, error
@@ -1801,6 +1873,7 @@ namespace Fun
         SessionOption option_ = null;
 
         // Redirect-related variables.
+        SessionOption redirect_option_ = null;
         bool wait_for_redirect_ = false;
         string redirect_token_ = "";
         List<string> redirect_cur_tags_ = new List<string>();
@@ -1824,7 +1897,7 @@ namespace Fun
     }
 
 
-    // This class is for saving unsent messages
+    // This is used to save unsent messages during redirection.
     public class UnsentMessage
     {
         public UnsentMessage (string type, object msg, EncryptionType enc)

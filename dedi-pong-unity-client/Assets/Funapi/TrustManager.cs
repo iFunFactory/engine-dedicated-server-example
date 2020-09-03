@@ -9,6 +9,7 @@
 //
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Security;
@@ -24,9 +25,20 @@ namespace Fun
 {
     public class TrustManager
     {
+#if !NO_UNITY
+        [RuntimeInitializeOnLoadMethod]
+        static void OnRuntimeLoad()
+        {
+#if !NO_LOAD_MOZROOTS
+            TrustManager.LoadMozRoots();
+#endif
+        }
+#endif
+
         public static bool DownloadMozRoots ()
         {
 #if !NO_UNITY
+            LoadMozRoots();
             string tempPath = FunapiUtils.GetLocalDataPath + "/" + Path.GetRandomFileName();
             try
             {
@@ -148,9 +160,9 @@ namespace Fun
                 FunDebug.LogError("LoadMozRoots - Failed to load certificate files.\n{0}", e.Message);
                 return false;
             }
-#endif
 
             ServicePointManager.ServerCertificateValidationCallback = CertValidationCallback;
+#endif
             return true;
         }
 
@@ -158,43 +170,43 @@ namespace Fun
         public static bool CertValidationCallback (System.Object sender, X509Certificate certificate,
                                                    X509Chain chain, SslPolicyErrors sslPolicyErrors)
         {
-#if !NO_UNITY
             if (sslPolicyErrors == SslPolicyErrors.None)
-                return true;
-
-            if (chain.ChainStatus.Length <= 0)
-                return false;
-
-            for (int i = 0; i < chain.ChainStatus.Length; ++i)
             {
-                if (chain.ChainStatus[i].Status == X509ChainStatusFlags.RevocationStatusUnknown)
+                return true;
+            }
+
+            // The server address to connect is different from the server address in the certificate
+            if ((sslPolicyErrors & SslPolicyErrors.RemoteCertificateNameMismatch) == SslPolicyErrors.RemoteCertificateNameMismatch)
+            {
+                return false;
+            }
+
+            foreach (X509ChainStatus status in chain.ChainStatus)
+            {
+                if (!allowed_chain_status_.Contains(status.Status))
                 {
-                    continue;
-                }
-                else if (chain.ChainStatus[i].Status == X509ChainStatusFlags.UntrustedRoot)
-                {
-                    if (!checkRootCertificate(chain))
-                    {
-                        FunDebug.LogWarning("Untrusted certificate chain : {0}", certificate);
-                        return false;
-                    }
-                    else
-                        continue;
-                }
-                else
-                {
-                    chain.ChainPolicy.RevocationFlag = X509RevocationFlag.EntireChain;
-                    chain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
-                    chain.ChainPolicy.UrlRetrievalTimeout = new TimeSpan(0, 1, 0);
-                    chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
-                    if (!chain.Build((X509Certificate2)certificate))
-                    {
-                        FunDebug.LogWarning("Invalid certificate : {0}", certificate);
-                        return false;
-                    }
+                    return false;
                 }
             }
-#endif
+
+            // Verify that server certificate can be built from the root certificate in mozroots
+            X509Chain ch = new X509Chain();
+            for (int i = chain.ChainElements.Count - 1; i > 0; i--)
+            {
+                X509ChainElement chainElement = chain.ChainElements[i];
+                ch.ChainPolicy.ExtraStore.Add(chainElement.Certificate);
+            }
+            ch.ChainPolicy.ExtraStore.AddRange(trusted_cerificates_);
+            ch.ChainPolicy.RevocationFlag = X509RevocationFlag.EntireChain;
+            ch.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            ch.ChainPolicy.UrlRetrievalTimeout = new TimeSpan(0, 1, 0);
+            ch.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
+            X509Certificate2 cert = new X509Certificate2(certificate);
+            if (!ch.Build(cert))
+            {
+                FunDebug.LogWarning("Invalid certificate : {0}", certificate);
+                return false;
+            }
             return true;
         }
 
@@ -218,28 +230,16 @@ namespace Fun
             return data;
         }
 
-        static bool checkRootCertificate (X509Chain chain)
-        {
-            if (trusted_cerificates_ == null)
-                return false;
-
-            for (int i = chain.ChainElements.Count - 1; i >= 0; i--)
-            {
-                X509ChainElement chainElement = chain.ChainElements[i];
-                foreach (X509Certificate2 trusted in trusted_cerificates_)
-                {
-                    if (chainElement.Certificate.Equals(trusted))
-                        return true;
-                }
-            }
-
-            return false;
-        }
-
 
         const string kMozillaCertificatesUrl = "https://hg.mozilla.org/mozilla-central/raw-file/tip/security/nss/lib/ckfw/builtins/certdata.txt";
         const string kDownloadCertificatesPath = "/Resources/Funapi/MozRoots.bytes";
         const string kResourceCertificatesPath = "Funapi/MozRoots";
+
+        static List<X509ChainStatusFlags> allowed_chain_status_ =
+            new List<X509ChainStatusFlags>(new X509ChainStatusFlags[] { X509ChainStatusFlags.OfflineRevocation,
+                                                                        X509ChainStatusFlags.PartialChain,
+                                                                        X509ChainStatusFlags.RevocationStatusUnknown,
+                                                                        X509ChainStatusFlags.UntrustedRoot } );
 
         static X509Certificate2Collection trusted_cerificates_ = null;
     }

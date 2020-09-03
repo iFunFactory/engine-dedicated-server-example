@@ -4,7 +4,9 @@
 // must not be used, disclosed, copied, or distributed without the prior
 // consent of iFunFactory Inc.
 
+using Fun;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 
@@ -68,7 +70,7 @@ namespace Fun
         public FunCompressionType CompressionType = FunCompressionType.kNone;
         public bool ReliableTransport = false;
         public bool SequenceValidation = false;
-        public float ConnectionTimeout = 0f;
+        public float ConnectionTimeout = 10f;
 
         public override bool Equals (object obj)
         {
@@ -150,6 +152,42 @@ namespace Fun
         }
     }
 
+    public class WebsocketTransportOption : TransportOption
+    {
+        public bool WSS = false;
+        public bool EnablePing = false;
+        public bool EnablePingLog = false;
+        public int PingIntervalSeconds = 0;
+        public float PingTimeoutSeconds = 0f;
+
+        public void SetPing (int interval, float timeout, bool enable_log = false)
+        {
+            EnablePing = true;
+            EnablePingLog = enable_log;
+            PingIntervalSeconds = interval;
+            PingTimeoutSeconds = timeout;
+        }
+
+        public override bool Equals (object obj)
+        {
+            if (obj == null || !base.Equals(obj) || !(obj is WebsocketTransportOption))
+                return false;
+
+            WebsocketTransportOption option = obj as WebsocketTransportOption;
+
+            return WSS == option.WSS &&
+                   EnablePing == option.EnablePing &&
+                   EnablePingLog == option.EnablePingLog &&
+                   PingIntervalSeconds == option.PingIntervalSeconds &&
+                   PingTimeoutSeconds == option.PingTimeoutSeconds;
+
+        }
+
+        public override int GetHashCode ()
+        {
+            return base.GetHashCode ();
+        }
+    }
 
 
     public partial class FunapiSession
@@ -324,6 +362,8 @@ namespace Fun
             // Properties
             //
             public FunapiMono.Listener mono { protected get; set; }
+
+            public FunapiSession session { protected get; set; }
 
             public abstract HostAddr address { get; }
 
@@ -501,10 +541,30 @@ namespace Fun
             {
                 TransportError error = new TransportError();
                 error.type = TransportError.Type.kDisconnected;
-                error.message = string.Format("[{0}] Forcibly closed the connection for testing.",
+                error.message = string.Format("[{0}] The connection will be forcibly closed.",
                                               str_protocol_);
                 onDisconnected(error);
             }
+
+            public void ForcedFail ()
+            {
+                TransportError error = new TransportError();
+                error.type = TransportError.Type.kSendingFailed;
+                error.message = string.Format("{0} The connection will be forcibly closed.",
+                                              str_protocol_);
+                onFailure(error);
+            }
+
+            public void ForcedException ()
+            {
+                TransportError error = new TransportError();
+                error.type = TransportError.Type.kReceivingFailed;
+                error.message = string.Format("{0} The connection will be forcibly closed." +
+                                              " (System.Net.Sockets.SocketException)",
+                                              str_protocol_);
+                onFailure(error);
+            }
+
 
             // Creates a socket.
             protected virtual void onStart ()
@@ -523,6 +583,7 @@ namespace Fun
                     next_decoding_offset_ = 0;
                 }
 
+                udp_handshake_id_ = Guid.NewGuid();
                 last_error_code_ = TransportError.Type.kNone;
                 last_error_message_ = "";
             }
@@ -576,6 +637,12 @@ namespace Fun
                     enable_ping_ = tcp_option.EnablePing;
                     enable_ping_log_ = tcp_option.EnablePingLog;
                 }
+                else if (protocol_ == TransportProtocol.kWebsocket)
+                {
+                    WebsocketTransportOption websocket_option = opt as WebsocketTransportOption;
+                    enable_ping_ = websocket_option.EnablePing;
+                    enable_ping_log_ = websocket_option.EnablePingLog;
+                }
 
                 if (opt.Encryption != EncryptionType.kDefaultEncryption)
                 {
@@ -587,7 +654,11 @@ namespace Fun
             void setConnectionTimeout ()
             {
                 if (option_.ConnectionTimeout <= 0f)
+                {
+                    FunDebug.LogWarning("Connection timeout is disabled(0), Disabling timeout would cause the infinite waiting state." +
+                                        " It is recommended that you use it only for debugging purposes.");
                     return;
+                }
 
                 timer_.Add(new FunapiTimeoutTimer("connection",
                                                   option_.ConnectionTimeout,
@@ -688,11 +759,11 @@ namespace Fun
                     if (ErrorCallback != null)
                         ErrorCallback(protocol_, error);
 
-                    if (state_ != State.kEstablished)
+                    if (auto_reconnect_ && !redirecting_)
                     {
-                        if (auto_reconnect_ && !redirecting_)
+                        if (state_ != State.kEstablished || last_error_message_.Contains("SocketException"))
                         {
-                            debug.Log("[{0}] Connection failed. Will try to connect again. " +
+                            debug.Log("[{0}] Error occurred. It will try to reconnect. " +
                                       "(state: {1}, error: {2})\n{3}\n",
                                       str_protocol_, state_, error.type, error.message);
 
@@ -783,18 +854,67 @@ namespace Fun
 
             void sendEmptyMessage ()
             {
-                if (encoding_ == FunEncoding.kJson)
+                sendMessage(new FunapiMessage(protocol_, kEmptyMessageType, new FunMessage()), true);
+            }
+
+            void sendUdpEmptyMessage()
+            {
+                lock (sending_lock_)
                 {
-                    sendMessage(new FunapiMessage(protocol_, kEmptyMessageType,
-                                                  FunapiMessage.Deserialize("{}")), true);
-                }
-                else if (encoding_ == FunEncoding.kProtobuf)
-                {
-                    sendMessage(new FunapiMessage(protocol_, kEmptyMessageType, new FunMessage()), true);
+                    if (encoding_ == FunEncoding.kJson)
+                    {
+                        first_.Add(new FunapiMessage(protocol_,
+                                                     kUdpHandShakeType,
+                                                     FunapiMessage.Deserialize("{}"),
+                                                     EncryptionType.kDefaultEncryption));
+                    }
+                    else if (encoding_ == FunEncoding.kProtobuf)
+                    {
+                        first_.Add(new FunapiMessage(protocol_,
+                                                     kUdpHandShakeType,
+                                                     new FunMessage(),
+                                                     EncryptionType.kDefaultEncryption));
+                    }
+                    if (isSendable)
+                    {
+                        sendPendingMessages();
+                    }
                 }
             }
 
-            void sendAck (UInt32 ack, bool sendingFirst = false)
+            protected IEnumerator tryToSendUdpEmptyMessage()
+            {
+                if (session.Id.IsValid)
+                {
+                    session_id_.SetId(session.GetSessionId());
+                }
+                else
+                {
+                    session_id_.Clear();
+                }
+
+                exponential_time_ = 1f;
+
+                while (true)
+                {
+                    if (IsEstablished || IsStopped)
+                    {
+                        exponential_time_ = 0f;
+                        yield break;
+                    }
+
+                    sendUdpEmptyMessage();
+
+                    // 0.1, 0.2, 0.4, 0.8, 0.8, ...
+                    float delay_time = exponential_time_;
+                    if (exponential_time_ < 8f)
+                        exponential_time_ *= 2f;
+
+                    yield return new SleepForSeconds(delay_time / 10f);
+                }
+            }
+
+           void sendAck (UInt32 ack, bool sendingFirst = false)
             {
                 if (encoding_ == FunEncoding.kJson)
                 {
@@ -1014,7 +1134,7 @@ namespace Fun
                     }
 
                     if (msg.msg_type != null &&
-                        msg.msg_type != kAckNumberField && msg.msg_type != kEmptyMessageType)
+                        msg.msg_type != kAckNumberField && msg.msg_type != kEmptyMessageType && msg.msg_type != kUdpHandShakeType)
                     {
                         // Adds message type
                         if (encoding_ == FunEncoding.kJson)
@@ -1068,6 +1188,21 @@ namespace Fun
                             }
                         }
                     }
+
+                    if (msg.msg_type == kUdpHandShakeType)
+                    {
+                        msg.msg_type = kEmptyMessageType;
+
+                        if (encoding_ == FunEncoding.kJson)
+                        {
+                            json_helper_.SetStringField(msg.message, kUdpHandshakeIdField, udp_handshake_id_.ToString());
+                        }
+                        else if (encoding_ == FunEncoding.kProtobuf)
+                        {
+                            FunMessage proto = msg.message as FunMessage;
+                            proto.udp_handshake_id = udp_handshake_id_.ToByteArray();
+                        }
+                    }
                 }
 
                 // Serializes message
@@ -1114,6 +1249,12 @@ namespace Fun
                         onFailure(error);
                         return false;
                     }
+                }
+
+                if (msg.body.Count > kMaxPayloadSize)
+                {
+                    FunDebug.LogWarning("The message size is too large, which can cause unexpected problems. " +
+                                        "Please make the message size smaller than {0} bytes.", kMaxPayloadSize);
                 }
 
                 makeHeader(msg, uncompressed_size);
@@ -1200,7 +1341,7 @@ namespace Fun
                             log.AppendFormat(", ack={0}", funmsg.ack);
                         }
 
-                        // TODO : Generates json string from protobuf message.
+                        FunapiMessage.DebugString(funmsg, log);
                     }
                 }
 
@@ -1261,6 +1402,9 @@ namespace Fun
                 {
                     foreach (FunapiMessage msg in sending_)
                     {
+                        if (length > 0 && (length + msg.header.Count + msg.body.Count) > kSendBufferMax)
+                            break;
+
                         if (msg.header.Count > 0)
                         {
                             length += msg.header.Count;
@@ -1674,7 +1818,22 @@ namespace Fun
                             if (protocol_ != TransportProtocol.kHttp &&
                                 state_ == State.kEstablished && msg_type.Length > 0)
                             {
-                                session_id_has_been_sent = true;
+                                if (encoding_ == FunEncoding.kJson)
+                                {
+                                    if (!json_helper_.HasField(message, kUdpHandshakeIdField))
+                                    {
+                                        session_id_has_been_sent = true;
+                                    }
+                                }
+                                else if (encoding_ == FunEncoding.kProtobuf)
+                                {
+                                    FunMessage funmsg = (FunMessage)message;
+
+                                    if (!funmsg.udp_handshake_idSpecified)
+                                    {
+                                        session_id_has_been_sent = true;
+                                    }
+                                }
                             }
                         }
                     }
@@ -1764,17 +1923,69 @@ namespace Fun
                                 log.AppendFormat(", ack={0}", funmsg.ack);
                             }
 
-                            // TODO : Generates json string from protobuf message.
+                            FunapiMessage.DebugString(funmsg, log);
                         }
                     }
 
                     debug.LogDebug(log.ToString());
                 }
 
-                if (ReceivedCallback != null)
+                if (msg_type != kUdpAttachedType && ReceivedCallback != null)
                     ReceivedCallback(this, msg_type, message);
 
+                if (!string.IsNullOrEmpty(msg_type))
+                {
+                    if (protocol_ == TransportProtocol.kUdp && !Connected)
+                    {
+                        if (msg_type == kSessionOpenedType || msg_type == kUdpAttachedType)
+                        {
+                            processUdpFirstMessageReply(msg_type, message);
+                        }
+                    }
+                }
+
                 return true;
+            }
+
+            protected void processUdpFirstMessageReply(string msg_type, object message)
+            {
+                Guid received_udp_handshake_id = Guid.Empty;
+
+                if (encoding_ == FunEncoding.kJson)
+                {
+                    if (json_helper_.HasField(message, kUdpHandshakeIdField))
+                    {
+                        string received_id_str = json_helper_.GetStringField(message, kUdpHandshakeIdField);
+                        received_udp_handshake_id = new Guid(received_id_str);
+                    }
+                }
+                else if (encoding_ == FunEncoding.kProtobuf)
+                {
+                    FunMessage funmsg = (FunMessage)message;
+
+                    if (funmsg.udp_handshake_idSpecified)
+                    {
+                        received_udp_handshake_id = new Guid(funmsg.udp_handshake_id);
+                    }
+                }
+
+                if (received_udp_handshake_id == Guid.Empty)
+                {
+                    debug.LogWarning("[{0}] udp handshake id is null. This message is ignored. message_type:{1}", str_protocol_, msg_type);
+                    return;
+                }
+                else if (!Guid.Equals(received_udp_handshake_id, udp_handshake_id_))
+                {
+                    debug.LogWarning("[{0}] This message is ignored. " +
+                                        "It might come from previous connection. message_type:{1}", str_protocol_, msg_type);
+                    return;
+                }
+
+                if(state_ == State.kConnecting)
+                {
+                    state_ = State.kConnected;
+                    onStarted();
+                }
             }
 
             protected void onFailedSending ()
@@ -1795,29 +2006,53 @@ namespace Fun
             //---------------------------------------------------------------------
             // Ping-related functions
             //---------------------------------------------------------------------
+            bool isPingEnabled ()
+            {
+                return enable_ping_ && (protocol == TransportProtocol.kTcp || protocol == TransportProtocol.kWebsocket);
+
+            }
+
             void startPingTimer ()
             {
-                if (!enable_ping_ || protocol_ != TransportProtocol.kTcp)
+                if (!isPingEnabled())
+                {
                     return;
+                }
 
-                TcpTransportOption tcp_option = option_ as TcpTransportOption;
+                float interval = 0f;
+                float timeout = 0f;
+                if (protocol_ == TransportProtocol.kTcp)
+                {
+                    TcpTransportOption tcp_option = option_ as TcpTransportOption;
+                    interval = tcp_option.PingIntervalSeconds;
+                    timeout = tcp_option.PingTimeoutSeconds;
+                }
+                else // if (protocol_ == TransportProtocol.kWebsocket)
+                {
+                    WebsocketTransportOption websocket_option = option_ as WebsocketTransportOption;
+                    interval = websocket_option.PingIntervalSeconds;
+                    timeout = websocket_option.PingTimeoutSeconds;
+                }
 
-                float interval = tcp_option.PingIntervalSeconds;
-                if (interval <= 0)
+                if (interval <= 0f)
+                {
                     interval = kPingIntervalDefault;
+                }
 
-                ping_timer_ = new FunapiPingTimer(interval, tcp_option.PingTimeoutSeconds,
+                ping_timer_ = new FunapiPingTimer(interval, timeout,
                                                   onPingUpdate, onPingTimeout);
                 timer_.Add(ping_timer_, true);
 
                 debug.Log("[{0}] Ping timer started. interval: {1}s timeout: {2}s",
-                          str_protocol_, interval, tcp_option.PingTimeoutSeconds);
+                          str_protocol_, interval, timeout);
             }
 
             void stopPingTimer ()
             {
-                if (!enable_ping_ || protocol_ != TransportProtocol.kTcp)
+                if (!isPingEnabled())
+                {
                     return;
+                }
 
                 lock (sending_lock_)
                 {
@@ -1882,7 +2117,9 @@ namespace Fun
                 }
 
                 if (enable_ping_log_)
-                    debug.LogDebug("Send ping - timestamp: {0}", timestamp);
+                {
+                    debug.LogDebug("[{0}] Send ping - timestamp: {1}", str_protocol_, timestamp);
+                }
             }
 
             void onServerPingMessage (object body)
@@ -1954,8 +2191,8 @@ namespace Fun
 
                 if (enable_ping_log_)
                 {
-                    debug.LogDebug("Received ping - timestamp:{0} time={1}ms",
-                                   timestamp, ping_time_);
+                    debug.LogDebug("[{0}] Received ping - timestamp:{1} time={2}ms",
+                                   str_protocol_, timestamp, ping_time_);
                 }
             }
 
@@ -1991,7 +2228,8 @@ namespace Fun
             const int kPingIntervalDefault = 3;
 
             // Buffer-related constants.
-            protected const int kUnitBufferSize = 65536;
+            protected const int kUnitBufferSize = 65536; // 64kb
+            protected const int kSendBufferMax = 32768;  // 32kb
 
             // Funapi header-related constants.
             protected const string kHeaderDelimeter = "\n";
@@ -2007,6 +2245,7 @@ namespace Fun
             const string kServerPingMessageType = "_ping_s";
             const string kClientPingMessageType = "_ping_c";
             const string kPingTimestampField = "timestamp";
+            protected const int kMaxPayloadSize = 1048576; // 1MB
 
             // for speed-up.
             static readonly char[] kHeaderDelimeterAsChars = kHeaderDelimeter.ToCharArray();
@@ -2028,6 +2267,7 @@ namespace Fun
             protected PostEventList event_ = new PostEventList();
             protected FunapiTimerList timer_ = new FunapiTimerList();
             protected bool is_paused_ = false;
+            Guid udp_handshake_id_ = Guid.Empty;
 
             // Connect-related member variables.
             ConnectState cstate_ = ConnectState.kUnknown;
