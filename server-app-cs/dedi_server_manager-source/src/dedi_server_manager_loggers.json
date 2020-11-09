@@ -1,0 +1,15 @@
+{
+  "SessionOpened": {
+    "session_id": "string",
+    "when": "datetime2"
+  },
+  "SessionClosed": {
+    "session_id": "string",
+    "when": "datetime2"
+  },
+  "PlayerLoggedIn": {
+    "session_id": "string",
+    "account_id": "string",
+    "when": "datetime2"
+  }
+}

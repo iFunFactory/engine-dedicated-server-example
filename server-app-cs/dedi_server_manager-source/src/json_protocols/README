@@ -1,0 +1,7 @@
+﻿If you use JSON for the client-server communiation,
+you can put JSON schema files that validate client-server messages.
+
+For more information, please see this
+
+Korean: http://www.ifunfactory.com/engine/documents/reference/ko/network-subsystem.html#protocol-validation-by-json-schema
+English: http://www.ifunfactory.com/engine/documents/reference/en/network-subsystem.html#protocol-validation-by-json-schema

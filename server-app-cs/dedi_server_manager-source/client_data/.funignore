@@ -1,0 +1,41 @@
+# This file contains perl regex patterns that are matched against
+# specific path or file name to determine whether or not they should be
+# ignored when your client requests resource data.
+#
+# Scope of the rules: All rules are applied to each subdirectories.
+#
+# Ignore all files that matched with 'data/specific.txt'
+.+data/specific\.txt
+
+# Ignore all files and subdirectories in below directories.
+# Please note that all rules are applied to each subdirectories.
+\.svn
+\.git
+
+# Ignore all files that match against following patterns.
+# These are commonly used by many operating system or IDE
+#
+# Commonly used files
+\.DS_Store
+Thumb\.db
+Desktop\.ini
+
+# {file name}.bak, {file name}.log
+^[\w\s\.,-_]+\.bak
+^[\w\s\.,-_]+\.log
+
+# Bin, bin
+[Bb]in
+# Obj, obj
+[Oo]bj
+
+# Build, build, Builds, builds
+[Bb]uilds?
+
+# Vim, {file name}.swp, swo, swn, swm
+^[\w\s\.,-_]+\.sw[ponm]
+
+# Python, {file name}.pyc, pyo
+venv
+pip-log\.txt
+^[\w\s\.,-_]+\.py[co]

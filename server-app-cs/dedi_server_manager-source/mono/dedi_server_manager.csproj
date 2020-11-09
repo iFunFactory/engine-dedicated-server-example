@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{33E5E2B4-4FDB-45C5-8154-3E1535CA44C7}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>DediServerManager</RootNamespace>
+    <AssemblyName>DediServerManager</AssemblyName>
+    <UseMSBuildEngine>False</UseMSBuildEngine>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug</OutputPath>
+    <DefineConstants>DEBUG;</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <ConsolePause>false</ConsolePause>
+    <CustomCommands>
+      <CustomCommands>
+        <Command type="BeforeBuild" command="mkdir -p ${TargetDir}/buildcpp" />
+        <Command type="BeforeBuild" command="cmake ${ProjectDir}/.. -DSKIP_CSHARP_PROJECT_BUILD:BOOL=ON" workingdir="${TargetDir}/buildcpp" />
+        <Command type="BeforeBuild" command="make" workingdir="${TargetDir}/buildcpp" />
+        <Command type="BeforeClean" command="make clean" workingdir="${TargetDir}/buildcpp" />
+        <Command type="Execute" command="/usr/bin/funapi_monodevelop_helper.exe" />
+        <Command type="Execute" command="${TargetDir}/buildcpp/dedi_server_manager-local -tie_to_parent" workingdir="${TargetDir}/buildcpp" />
+      </CustomCommands>
+    </CustomCommands>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>full</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release</OutputPath>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <ConsolePause>false</ConsolePause>
+    <CustomCommands>
+      <CustomCommands>
+        <Command type="BeforeBuild" command="mkdir -p ${TargetDir}/buildcpp" />
+        <Command type="BeforeBuild" command="cmake ${ProjectDir}/.. -DSKIP_CSHARP_PROJECT_BUILD:BOOL=ON" workingdir="${TargetDir}/buildcpp" />
+        <Command type="BeforeBuild" command="make" workingdir="${TargetDir}/buildcpp" />
+        <Command type="BeforeClean" command="make clean" workingdir="${TargetDir}/buildcpp" />
+        <Command type="Execute" command="/usr/bin/funapi_monodevelop_helper.exe" />
+        <Command type="Execute" command="${TargetDir}/buildcpp/dedi_server_manager-local -tie_to_parent" workingdir="${TargetDir}/buildcpp" />
+      </CustomCommands>
+    </CustomCommands>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Xml" />
+    <Reference Include="funapi">
+      <HintPath>/usr\lib\funapi\funapi.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>/usr\lib\funapi\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="protobuf-net">
+      <HintPath>/usr\lib\funapi\protobuf-net.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="dsm\authentication_helper.cs" />
+    <Compile Include="dsm\dedicated_server_helper.cs" />
+    <Compile Include="dsm\matchmaking_helper.cs" />
+    <Compile Include="dsm\matchmaking_server_wrapper.cs" />
+    <Compile Include="dsm\matchmaking_type.cs" />
+    <Compile Include="dsm\session_response.cs" />
+    <Compile Include="server.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ContentFiles Include="..\src\dedi_server_manager_loggers.json"><Link>ActivityLog\dedi_server_manager_loggers.json</Link></ContentFiles>
+    <Compile Include="ActivityLog\dedi_server_manager_loggers.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ContentFiles Include="..\src\*MANIFEST*.json"><Link>Manifest\*MANIFEST*.json</Link><Link>Manifest\%(Filename)%(Extension)</Link></ContentFiles>
+  </ItemGroup>
+  <ItemGroup>
+    <ContentFiles Include="..\src\object_model\*.json"><Link>ObjectModel\*.json</Link><Link>ObjectModel\%(Filename)%(Extension)</Link></ContentFiles>
+    <Compile Include="ObjectModel\dedi_server_manager_object.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ContentFiles Include="..\src\*.proto"><Link>Protobuf\*.proto</Link><Link>Protobuf\%(Filename)%(Extension)</Link></ContentFiles>
+    <Compile Include="Protobuf\dedi_server_manager_messages.cs" />
+    <Compile Include="Protobuf\dedi_server_manager_protobuf_helper.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
+</Project>

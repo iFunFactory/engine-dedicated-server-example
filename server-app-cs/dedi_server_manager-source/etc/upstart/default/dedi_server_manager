@@ -1,0 +1,4 @@
+# Sets this to 1 to enable, to 0 to disable
+enabled=1
+uid=root
+gid=root
