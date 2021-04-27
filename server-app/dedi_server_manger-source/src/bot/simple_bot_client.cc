@@ -129,7 +129,8 @@ void OnSessionClosed(const Ptr<funtest::Session> &session,
 void SimpleBotClient::Install(
     int threads, int bot_clients, const dsm::MatchType match_type) {
   // 봇 클라이언트의 세션 핸들러를 등록합니다.
-  funtest::Network::Install(OnSessionOpened, OnSessionClosed, threads);
+  funtest::Network::Option option(threads);
+  funtest::Network::Install(OnSessionOpened, OnSessionClosed, option);
 
   BotAuthenticationHelper::Install(OnLoginResponseReceived);
 
