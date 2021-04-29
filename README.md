@@ -183,7 +183,7 @@ C:\engine-dedicated-server-example\dedi-pong-unity-client\Build\Pong.exe
   - github 의 용량 제한 문제로 Content 폴더가 빠져있습니다. 예제 실행을 위해서는 **에픽 게임즈 런처**에서 슈터 게임 예제를 다운 받으신 후 Content 폴더를 복사하셔야 합니다.
   - 4.21 버전의 엔진을 사용시 발생하는 `CachedCPPEnvironments` 에러는 [.cc 파일 컴파일 오류](https://www.ifunfactory.com/engine/documents/reference/ko/client-plugin.html#cc) 를 참고해 주세요.
 
-1. [UE4 엔진 소스](https://github.com/EpicGames/UnrealEngine) 로 에디터를 빌드합니다.
+1. [UE4 엔진 소스](https://github.com/EpicGames/UnrealEngine) 로 에디터를 빌드합니다. [참고](https://www.unrealengine.com/ko/ue4-on-github)
 2. 빌드된 UE4 에디터로 ShooterGame 프로젝트 에디터를 실행시킵니다.
 3. 실행된 에디터의 `File->Package Project` 에서 원하는 플랫폼으로 원하는 위치에 패키징을 진행합니다.
 3. 패키징이 완료된 후 에디터의 `File->Opne Visual Studio` 로 Visual Studio 를 실행시킵니다.
